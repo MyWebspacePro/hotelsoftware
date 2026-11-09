@@ -1,6 +1,6 @@
 # PROJEKT-STATUS — HotelGuru
 
-**Stand:** 09.11.2026 · **Phase:** 4 abgeschlossen (Housekeeping/Personal live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
+**Stand:** 09.11.2026 · **Phase:** 5 abgeschlossen (Buchungsanfrage + iCal-Kanäle live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
 
 ## Live
 - **Produktion (VPS):** https://hotelsoftware.aiconso.eu — Let's-Encrypt gültig bis 07.02.2027
@@ -68,6 +68,26 @@ Demo-Benutzer (Rollen vorhanden): admin@ / manager@ / rezeption@ / housekeeping@
 - Phase-4-Smoke (lokal + VPS): Task-Generierung, Status/DND/Tasks, Tickets, 40 Schichten/Woche,
   Urlaubsübersicht — alle Endpunkte online verifiziert
 
+## Phase 5 — funktional
+- **Öffentliche Buchungsanfrage** (`/anfrage`, ohne Login): Zeitraum + Gästezahl →
+  Verfügbarkeitscheck mit Preisen/Saisons/MinStay/Stop-Sell je Kategorie → Kontaktformular →
+  landet als INQUIRY (Quelle WEBSITE_REQUEST) im Backoffice, dort Angebot→Bestätigung wie gehabt;
+  Preisvorschlag unverbindlich, Referenznummer, Honeypot gegen Bots, Rate-Limit
+  (30 Verfügbarkeitschecks/min, 10 Anfragen/h pro IP)
+- **iCal-Kanäle:** Verbindungen für Airbnb/Booking.com/Andere (Import/Export/beides, optional
+  Zimmertyp); Import-Engine liest Portal-Feeds (RFC-5545 inkl. Line-Folding, DATE- und
+  DATE-TIME-Werte), legt Portal-Buchungen automatisch an (CONFIRMED, Quelle ICAL, Preis 0),
+  erkennt **Konflikte** bei Vollbelegung und zieht die Projektion zurück; verschollene
+  Feed-Events werden entfernt (saubere Buchungen mitgelöscht)
+- **Export-Feeds:** pro Verbindung token-gesichert (`/api/public/ical/:token`, text/calendar)
+  mit zukünftigen/laufenden Aufenthalten inkl. Zimmertyp-Filter; Token rotierbar, URL copy&paste
+- **Kanäle-Seite im Backoffice:** Verbindungsliste mit Sync-Buttons/Aktiv-Schalter/Token-Rotation,
+  Konfliktübersicht mit Lösungshinweis, importierte Aufenthalte mit Status, Sync-Protokoll
+- **Shared:** ical-Engine mit 8 Unit-Tests (79 gesamt); Demo: 2 Kanäle mit selbst gelesenem
+  Demo-Feed (`/api/public/ical/demo-feed`)
+- Phase-5-Smoke (lokal + VPS): 15/15 — Anfrage→INQUIRY→OFFERED→CONFIRMED, Honeypot, Sync,
+  Konflikt-Erkennung + Zurückziehen der Projektion, Export-Feed (12 VEVENTs), falscher Token→404
+
 ## Phase 1 — funktional
 - **Zimmerplan** (Tag/Woche/Monat/2 Monate, Drag-Auswahl → Buchung, Klick → Details, Statusfarben, Heute-Linie)
 - **Reservierungen** mit Statusfilter + Statusmaschine (shared), Buchungsdialog mit Live-Verfügbarkeit + Saisonpreisen
@@ -86,4 +106,6 @@ curl https://hotelsoftware.aiconso.eu/api/health
 Details + Wiederherstellung: `VPS-UEBERGABE.md`. Scope/Architektur: `docs/SCOPE.md`, `docs/DATENMODELL.md`, `docs/PHASENPLAN.md`.
 
 ## Nächste Schritte
-Phase 5: Öffentliche Buchungsanfrage (Verfügbarkeitscheck + Formular) + iCal-Kanäle (Airbnb/Booking.com Import/Export)
+Phase 6: Abnahme + End-to-End-Regression (Login→Reservierung→Check-in→Verzehr→Kurtaxe→Rechnung→
+Tagesabschluss→FiBu→Meldewesen) + finale Statistiken + Übergabe-Doku.
+Danach Stufe 2 (Backlog): fiskaltrust-RKSV, TSE, XRechnung/ZUGFeRD, Stripe-Terminal, Channel-ARI.

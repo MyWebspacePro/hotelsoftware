@@ -54,12 +54,12 @@ oder per `docker cp` reinbringen. Smoke-Test nach jedem Deploy: Health + Login +
   Kontingente + Genehmigungen, Jahres-Urlaubsübersicht
 - **Deploy 4** + Smoke-Test
 
-## Phase 5 — Vertrieb: Web-Anfrage + iCal-Kanäle
-- Öffentliche Buchungsanfrage (Tailwind-Öffentlichkeitsroute, Verfügbarkeitscheck, Anti-Spam),
-  Verarbeitung im Backoffice (Anfrage → Booking)
-- iCal-Import (Airbnb/Booking.com) mit Konfliktübersicht + iCal-Export-Feeds,
-  ChannelConnection-Verwaltung, Sync-Log
-- **Deploy 5** + Smoke-Test (Test-Anfrage von außen + iCal-Roundtrip)
+## Phase 5 — Vertrieb: Web-Anfrage + iCal-Kanäle ✅ (09.11.2026)
+- Öffentliche Buchungsanfrage (`/anfrage` ohne Login: Verfügbarkeitscheck, Preisvorschlag,
+  Honeypot, Rate-Limit), Verarbeitung im Backoffice (INQUIRY → Angebot → Bestätigung)
+- iCal-Import (Airbnb/Booking.com) mit Konflikterkennung + iCal-Export-Feeds (Token),
+  ChannelConnection-Verwaltung, Sync-Log — Smoke 15/15 lokal + online
+
 
 ## Phase 6 — Abnahme & Übergabe
 - End-to-End-Regression (Login → Reservierung → Check-in → Verzehr → Kurtaxe → Rechnung →
