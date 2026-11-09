@@ -1,6 +1,6 @@
 # PROJEKT-STATUS — HotelGuru
 
-**Stand:** 09.11.2026 · **Phase:** 1 abgeschlossen (Zimmerplan/Reservierung live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
+**Stand:** 09.11.2026 · **Phase:** 2 abgeschlossen (Abrechnung/Rechnungslegung live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
 
 ## Live
 - **Produktion (VPS):** https://hotelsoftware.aiconso.eu — Let's-Encrypt gültig bis 07.02.2027
@@ -26,6 +26,24 @@ Für echten Produktivbetrieb: Demo-Benutzer deaktivieren/löschen (Benutzerverwa
 - `npm install` → `docker compose up -d` → `npm run db:push` → `npm run db:seed` → `npm run db:seed:demo` → `npm run dev`
 - Phase-1-Smoke (09.11.2026, lokal + VPS): Verfügbarkeits-/Kalender-/Dashboard-Endpunkte grün,
   Buchung per API angelegt (Zimmer-Zuweisung + Saisonpreis korrekt), SPA-Routen 200
+- Phase-2-Smoke (09.11.2026, lokal + VPS): Check-in → 21 Auto-Postings (HP-Splitting Logis/
+  Verpflegung, Kurtaxe 5 €/P/N <15 J. frei) → Rechnung AT-2026-RE-0001 (Brutto 1.498 €, 3
+  Steuer-Buckets) → PDF (2,8 KB, gültiges %PDF) → Tagesabschluss → DATEV-Export (Debitor
+  10000 → 6200/6300, 10USt) — alle Schritte über die öffentliche Domain verifiziert
+
+## Phase 2 — funktional
+- **Gastkonto (Folio):** Check-in postet Logis-Nächte automatisch (HP wird per Splitting-Profil
+  in Logis-/Verpflegungsanteil geteilt), Kurtaxe je Nacht aus konfigurierbaren Sätzen
+  (Altersfreigrenze, Kindersatz, Saisonfenster); Artikel-/Freitext-Verzehr, Zahlungen,
+  Rückbuchung bei Storno/No-Show
+- **Rechnungslegung:** Länder-Nummernkreise (AT/DE/CH-RE-YYYY-NNNN), Einzel-/Anzahlungs-/
+  Gutschriften mit Storno-Kette, Steuer-Buckets je Schlüssel, Kurtaxe separat belegfrei
+  ausgewiesen, **PDF-Druck** (pdfkit, WinAnsi-Standardschriften)
+- **Kasse:** Kassenbuch je Tag, Tagesabschluss (Zahlarten, Folio-Umsätze, Steuer-Summen)
+- **FiBu-Export:** DATEV-Buchungsstapel (DE/AT) + generischer CSV (CH), Kontenmapping
+  editierbar (Debitor/Erlöskonten je Kategorie)
+- **Stammdaten-Plus:** Artikel/Leistungen mit Steuer-Schlüssel, Kurtaxe-Sätze verwaltbar
+- **Shared-Engines:** touristTax, hpSplitting, invoiceTotals, fibu — 52 Unit-Tests gesamt
 
 ## Phase 1 — funktional
 - **Zimmerplan** (Tag/Woche/Monat/2 Monate, Drag-Auswahl → Buchung, Klick → Details, Statusfarben, Heute-Linie)
@@ -45,4 +63,4 @@ curl https://hotelsoftware.aiconso.eu/api/health
 Details + Wiederherstellung: `VPS-UEBERGABE.md`. Scope/Architektur: `docs/SCOPE.md`, `docs/DATENMODELL.md`, `docs/PHASENPLAN.md`.
 
 ## Nächste Schritte
-Phase 2: Folio/Verrechnung, Rechnungslegung (HP-Splitting, Kurtaxe), Tagesabschluss, FiBu-Export
+Phase 3: Meldewesen (Meldeprofile DE/AT/CH, Registrierungsdaten, Exporte) + DSGVO-Löschläufe
