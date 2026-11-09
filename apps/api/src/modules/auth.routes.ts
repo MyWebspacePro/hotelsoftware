@@ -16,6 +16,41 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * Login-Rate-Limit (In-Memory): nach 10 Fehlversuchen pro IP+E-Mail 15 Minuten Sperre.
+ * Schützt das öffentliche System gegen Passwort-Raten.
+ */
+const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const MAX_FAILED_ATTEMPTS = 10;
+const BLOCK_MS = 15 * 60 * 1000;
+
+function clientKey(req: { ip?: string; body?: unknown }): string {
+  const email = ((req.body as { email?: string })?.email ?? "").toLowerCase();
+  return `${req.ip ?? "unknown"}|${email}`;
+}
+
+function checkRateLimit(key: string): boolean {
+  const entry = loginAttempts.get(key);
+  if (!entry) return true;
+  if (entry.blockedUntil > Date.now()) return false;
+  if (entry.blockedUntil !== 0 && entry.blockedUntil <= Date.now()) loginAttempts.delete(key);
+  return true;
+}
+
+function recordFailedLogin(key: string): void {
+  const entry = loginAttempts.get(key) ?? { count: 0, blockedUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= MAX_FAILED_ATTEMPTS) {
+    entry.blockedUntil = Date.now() + BLOCK_MS;
+    entry.count = 0;
+  }
+  loginAttempts.set(key, entry);
+}
+
+function clearFailedLogins(key: string): void {
+  loginAttempts.delete(key);
+}
+
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(8, "Neues Passwort: mindestens 8 Zeichen"),
@@ -29,17 +64,24 @@ function toTokenUser(user: { id: string; email: string; role: string; hotelId: s
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/login", async (req, reply) => {
+    const key = clientKey(req);
+    if (!checkRateLimit(key)) {
+      return reply.code(429).send({ error: "Zu viele Fehlversuche — bitte in 15 Minuten erneut versuchen" });
+    }
     const body = loginSchema.parse(req.body);
     const user = await prisma.user.findFirst({
       where: { email: body.email, deletedAt: null },
     });
     if (!user || !user.active) {
+      recordFailedLogin(key);
       return reply.code(401).send({ error: "E-Mail oder Passwort falsch" });
     }
     const passwordOk = await bcrypt.compare(body.password, user.passwordHash);
     if (!passwordOk) {
+      recordFailedLogin(key);
       return reply.code(401).send({ error: "E-Mail oder Passwort falsch" });
     }
+    clearFailedLogins(key);
 
     const tokenUser = toTokenUser(user);
     const accessToken = signAccessToken(tokenUser);

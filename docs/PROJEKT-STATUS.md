@@ -9,17 +9,15 @@
   `hs-backup` (tägliches pg_dump nach `/opt/hotelsoftware/backups`, 30 Tage Vorhalt)
 - Routing: Traefik (Coolify-Netzwerk `coolify`), keine Host-Ports; `.env` nur auf dem VPS (chmod 600)
 
-## Zugänge (Demo-Stand nach Seed)
-| Rolle | Login | Passwort |
-|---|---|---|
-| ADMIN | `admin@hotelguru.local` | `Admin1234!` |
-| MANAGER | `manager@hotelguru.local` | `Demo1234!` |
-| RECEPTION | `rezeption@hotelguru.local` | `Demo1234!` |
-| HOUSEKEEPING | `housekeeping@hotelguru.local` | `Demo1234!` |
-| SERVICE | `service@hotelguru.local` | `Demo1234!` |
+## Zugänge
+⚠️ **Sicherheitsvorfall 09.11.2026:** Da die Demo-Zugänge hier öffentlich standen, loggte sich
+eine fremde Partei live ein (siehe Audit-Log) und änderte Passwörter. **Alle Passwörter wurden
+rotiert** (starke Zufallswerte, Übergabe außerhalb des Repos), JWT-Secrets rotiert (alle
+Sessions ungültig), Login-Rate-Limit (10 Fehlversuche → 15 min Sperre) aktiviert.
+Aktuelle Zugänge werden ausschließlich außerhalb des Repos übergeben (Chat/Passwort-Manager).
+**Regel: Nie wieder Zugangsdaten in dieses öffentliche Repo schreiben.**
 
-VPS-Admin kann sich nach dem ersten Login sein Passwort ändern (Profil → Passwort ändern).
-Für echten Produktivbetrieb: Demo-Benutzer deaktivieren/löschen (Benutzerverwaltung).
+Demo-Benutzer (Rollen vorhanden): admin@ / manager@ / rezeption@ / housekeeping@ / service@hotelguru.local
 
 ## Lokale Entwicklung
 - Ports bewusst abweichend vom Werkstattmanager: DB **5433**, Mailhog **1026/8026**
