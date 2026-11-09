@@ -44,6 +44,14 @@ model Hotel {
   deletedAt    DateTime?
   users        User[]
   systemConfig SystemConfig?
+  roomTypes    RoomType[]
+  rooms        Room[]
+  ratePlans    RatePlan[]
+  priceRules   PriceRule[]
+  articles     Article[]
+  guests       Guest[]
+  bookings     Booking[]
+  reservations Reservation[]
 
   @@map("hotels")
 }
@@ -92,4 +100,210 @@ model AuditLog {
   @@index([hotelId, createdAt])
 
   @@map("audit_logs")
+}
+
+// ── Stammdaten & Preise (Phase 1) ────────────────────────────
+
+enum BoardBasis {
+  NUR_LOGIS
+  UE_F
+  HP
+}
+
+enum BookingStatus {
+  INQUIRY
+  OFFERED
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingSource {
+  WEBSITE_REQUEST
+  PHONE
+  EMAIL
+  WALK_IN
+  ICAL
+}
+
+enum ArticleCategory {
+  FOOD
+  DRINK
+  SPA
+  SKISERVICE
+  OTHER
+}
+
+model RoomType {
+  id            String        @id @default(cuid())
+  hotelId       String
+  hotel         Hotel         @relation(fields: [hotelId], references: [id])
+  name          String
+  capacity      Int           @default(2)
+  maxExtraBeds  Int           @default(0)
+  description   String?
+  basePriceCents Int          @default(12000)
+  color         String        @default("#6366f1")
+  rooms         Room[]
+  reservations  Reservation[]
+  priceRules    PriceRule[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  @@index([hotelId])
+  @@map("room_types")
+}
+
+model Room {
+  id         String        @id @default(cuid())
+  hotelId    String
+  hotel      Hotel         @relation(fields: [hotelId], references: [id])
+  roomTypeId String
+  roomType   RoomType      @relation(fields: [roomTypeId], references: [id])
+  number     String
+  floor      Int?
+  notes      String?
+  reservations Reservation[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+
+  @@unique([hotelId, number])
+  @@index([hotelId, roomTypeId])
+  @@map("rooms")
+}
+
+model RatePlan {
+  id                String        @id @default(cuid())
+  hotelId           String
+  hotel             Hotel         @relation(fields: [hotelId], references: [id])
+  name              String
+  basis             BoardBasis    @default(NUR_LOGIS)
+  cancellationTerms String?
+  active            Boolean       @default(true)
+  reservations      Reservation[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  @@index([hotelId])
+  @@map("rate_plans")
+}
+
+model PriceRule {
+  id          String    @id @default(cuid())
+  hotelId     String
+  hotel       Hotel     @relation(fields: [hotelId], references: [id])
+  roomTypeId  String
+  roomType    RoomType  @relation(fields: [roomTypeId], references: [id])
+  name        String?
+  dateFrom    DateTime  @db.Date
+  dateTo      DateTime  @db.Date
+  priceCents  Int
+  minStay     Int       @default(1)
+  stopSell    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([hotelId, roomTypeId, dateFrom])
+  @@map("price_rules")
+}
+
+model Article {
+  id              String          @id @default(cuid())
+  hotelId         String
+  hotel           Hotel           @relation(fields: [hotelId], references: [id])
+  name            String
+  category        ArticleCategory @default(OTHER)
+  taxRateKey      String
+  unitPriceCents  Int
+  chargeToRoom    Boolean         @default(true)
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  @@index([hotelId])
+  @@map("articles")
+}
+
+model Guest {
+  id               String    @id @default(cuid())
+  hotelId          String
+  hotel            Hotel     @relation(fields: [hotelId], references: [id])
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  address          String?
+  zip              String?
+  city             String?
+  country          String?
+  nationality      String?
+  birthDate        DateTime? @db.Date
+  idType           String?
+  idNumber         String?
+  marketingConsent Boolean   @default(false)
+  notes            String?
+  bookings         Booking[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  @@index([hotelId, lastName])
+  @@map("guests")
+}
+
+model Booking {
+  id         String        @id @default(cuid())
+  hotelId    String
+  hotel      Hotel         @relation(fields: [hotelId], references: [id])
+  status     BookingStatus @default(INQUIRY)
+  source     BookingSource @default(PHONE)
+  guestId    String?
+  guest      Guest?        @relation(fields: [guestId], references: [id])
+  channelRef String?
+  notes      String?
+  reservations Reservation[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+
+  @@index([hotelId, status])
+  @@map("bookings")
+}
+
+model Reservation {
+  id                  String        @id @default(cuid())
+  hotelId             String
+  hotel               Hotel         @relation(fields: [hotelId], references: [id])
+  bookingId           String
+  booking             Booking       @relation(fields: [bookingId], references: [id])
+  // Spiegelt Booking.status (einheitlich beim Statuswechsel gesetzt) — ermöglicht
+  // später Teil-Check-ins bei Mehrzimmerbuchungen
+  status              BookingStatus @default(INQUIRY)
+  roomId              String?
+  room                Room?         @relation(fields: [roomId], references: [id])
+  roomTypeId          String
+  roomType            RoomType      @relation(fields: [roomTypeId], references: [id])
+  ratePlanId          String?
+  ratePlan            RatePlan?     @relation(fields: [ratePlanId], references: [id])
+  dateFrom            DateTime      @db.Date
+  dateTo              DateTime      @db.Date
+  adults              Int           @default(2)
+  children            Int           @default(0)
+  pricePerNightCents  Int           @default(0)
+  priceTotalCents     Int           @default(0)
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+
+  @@index([hotelId, dateFrom, dateTo])
+  @@index([bookingId])
+  @@map("reservations")
 }

@@ -19,6 +19,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:push": "npm run db:push -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
+    "db:seed:demo": "npm run db:seed:demo -w apps/api",
     "db:studio": "npm run db:studio -w apps/api"
   },
   "devDependencies": {

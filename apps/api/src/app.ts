@@ -4,6 +4,12 @@ import { ZodError } from "zod";
 import { authRoutes } from "./modules/auth.routes.js";
 import { usersRoutes } from "./modules/users.routes.js";
 import { hotelRoutes } from "./modules/hotels.routes.js";
+import { roomsRoutes } from "./modules/rooms.routes.js";
+import { pricingRoutes } from "./modules/pricing.routes.js";
+import { articlesRoutes } from "./modules/articles.routes.js";
+import { guestsRoutes } from "./modules/guests.routes.js";
+import { bookingsRoutes } from "./modules/bookings.routes.js";
+import { calendarRoutes } from "./modules/calendar.routes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -31,6 +37,12 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(usersRoutes, { prefix: "/api/users" });
   await app.register(hotelRoutes, { prefix: "/api/hotel" });
+  await app.register(roomsRoutes, { prefix: "/api/rooms" });
+  await app.register(pricingRoutes, { prefix: "/api/pricing" });
+  await app.register(articlesRoutes, { prefix: "/api/articles" });
+  await app.register(guestsRoutes, { prefix: "/api/guests" });
+  await app.register(bookingsRoutes, { prefix: "/api/bookings" });
+  await app.register(calendarRoutes, { prefix: "/api/calendar" });
 
   return app;
 }

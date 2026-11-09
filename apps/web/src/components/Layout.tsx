@@ -24,15 +24,14 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
           </div>
           <nav className="flex items-center gap-1">
-            <NavLink to="/" end className={navClass}>
-              {t("nav.overview")}
-            </NavLink>
-            <NavLink to="/benutzer" className={navClass}>
-              {t("nav.users")}
-            </NavLink>
-            <NavLink to="/profil" className={navClass}>
-              {t("nav.profile")}
-            </NavLink>
+            <NavLink to="/" end className={navClass}>{t("nav.overview")}</NavLink>
+            <NavLink to="/zimmerplan" className={navClass}>Zimmerplan</NavLink>
+            <NavLink to="/reservierungen" className={navClass}>Reservierungen</NavLink>
+            <NavLink to="/gaeste" className={navClass}>Gäste</NavLink>
+            <NavLink to="/stammdaten" className={navClass}>Stammdaten</NavLink>
+            <NavLink to="/preise" className={navClass}>Preise</NavLink>
+            <NavLink to="/benutzer" className={navClass}>{t("nav.users")}</NavLink>
+            <NavLink to="/profil" className={navClass}>{t("nav.profile")}</NavLink>
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-slate-300 sm:inline">
