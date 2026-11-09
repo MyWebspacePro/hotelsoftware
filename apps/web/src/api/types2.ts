@@ -210,3 +210,52 @@ export interface RetentionRunView {
   registrationsAnonymized: number;
   guestsAnonymized: number;
 }
+
+// ── Phase 5: Kanäle (iCal) ──────────────────────────────────
+
+export interface ChannelConnectionView {
+  id: string;
+  name: string;
+  platform: "AIRBNB" | "BOOKING" | "OTHER";
+  direction: "IMPORT" | "EXPORT" | "BOTH";
+  roomTypeId: string | null;
+  roomTypeName: string | null;
+  importUrl: string | null;
+  exportToken: string;
+  active: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  eventCount: number;
+}
+
+export interface IcalEventView {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  platform: string;
+  roomTypeName: string | null;
+  externalUid: string;
+  summary: string | null;
+  dateFrom: string;
+  dateTo: string;
+  nights: number;
+  conflict: boolean;
+  conflictNote: string | null;
+  bookingId: string | null;
+  bookingStatus: string | null;
+  lastSeenAt: string;
+}
+
+export interface ChannelSyncLogView {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  direction: string;
+  status: string;
+  imported: number;
+  updated: number;
+  removed: number;
+  conflicts: number;
+  message: string | null;
+  ranAt: string;
+}

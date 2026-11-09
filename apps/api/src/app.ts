@@ -18,6 +18,8 @@ import { registrationsRoutes } from "./modules/registrations.routes.js";
 import { retentionRoutes } from "./modules/retention.routes.js";
 import { housekeepingRoutes } from "./modules/housekeeping.routes.js";
 import { staffRoutes } from "./modules/staff.routes.js";
+import { channelsRoutes } from "./modules/channels.routes.js";
+import { publicRoutes } from "./modules/public.routes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -59,6 +61,8 @@ export async function buildApp() {
   await app.register(retentionRoutes, { prefix: "/api/retention" });
   await app.register(housekeepingRoutes, { prefix: "/api/housekeeping" });
   await app.register(staffRoutes, { prefix: "/api/staff" });
+  await app.register(channelsRoutes, { prefix: "/api/channels" });
+  await app.register(publicRoutes, { prefix: "/api/public" });
 
   return app;
 }

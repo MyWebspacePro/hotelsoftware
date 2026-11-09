@@ -5,6 +5,7 @@
  * Ausführen: npm run db:seed:demo  (lokal) bzw. im Container: npx tsx prisma/seed-demo.ts
  */
 import { PrismaClient } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import { addDays, todayIso } from "@hg/shared";
 
 const prisma = new PrismaClient();
@@ -49,6 +50,9 @@ async function main(): Promise<void> {
     if (employeeCount === 0) {
       await seedStaff(hotelId);
       console.log("➕ Personal-Daten nachgerüstet");
+    }
+    if (await seedChannels(hotelId)) {
+      console.log("➕ Kanal-Verbindungen nachgerüstet");
     }
     console.log("ℹ️  Demo-Stammdaten bereits vorhanden — Nachrüstungen sichergestellt");
     return;
@@ -259,7 +263,43 @@ async function main(): Promise<void> {
   // ── Personal (Phase 4) ──────────────────────────────────────
   await seedStaff(hotelId);
 
-  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate) + Kurtaxe + FiBu + Personal`);
+  // ── Kanäle (Phase 5) ────────────────────────────────────────
+  await seedChannels(hotelId);
+
+  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate) + Kurtaxe + FiBu + Personal + Kanäle`);
+}
+
+/** Demo-Kanäle (Phase 5): Airbnb/Booking-Verbindungen, deren Feed der API-Server selbst liefert. */
+async function seedChannels(hotelId: string): Promise<boolean> {
+  const count = await prisma.channelConnection.count({ where: { hotelId } });
+  if (count > 0) return false;
+  // Demo-Feed liegt auf dem API-Server selbst — funktioniert im Container (VPS) und lokal
+  const demoUrl = "http://localhost:3001/api/public/ical/demo-feed";
+  const familie = await prisma.roomType.findFirst({ where: { hotelId, name: "Familie", deletedAt: null } });
+  const apartment = await prisma.roomType.findFirst({ where: { hotelId, name: "Apartment", deletedAt: null } });
+  await prisma.channelConnection.create({
+    data: {
+      hotelId,
+      name: "Airbnb – Familienzimmer",
+      platform: "AIRBNB",
+      direction: "BOTH",
+      roomTypeId: familie?.id ?? null,
+      importUrl: demoUrl,
+      exportToken: randomBytes(16).toString("hex"),
+    },
+  });
+  await prisma.channelConnection.create({
+    data: {
+      hotelId,
+      name: "Booking.com – Apartments",
+      platform: "BOOKING",
+      direction: "BOTH",
+      roomTypeId: apartment?.id ?? null,
+      importUrl: demoUrl,
+      exportToken: randomBytes(16).toString("hex"),
+    },
+  });
+  return true;
 }
 
 /** Personal-Demodaten: 15 Mitarbeiter, Vorlagen, Dienstplan ±1 Woche, Urlaube, Tickets. */

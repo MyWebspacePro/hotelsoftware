@@ -70,6 +70,7 @@ model Hotel {
   shiftTemplates ShiftTemplate[]
   shifts        Shift[]
   vacationRequests VacationRequest[]
+  channelConnections ChannelConnection[]
 
   @@map("hotels")
 }
@@ -658,6 +659,7 @@ model RoomType {
   rooms         Room[]
   reservations  Reservation[]
   priceRules    PriceRule[]
+  channelConnections ChannelConnection[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
@@ -786,6 +788,7 @@ model Booking {
   reservations Reservation[]
   folios     FolioAccount[]
   invoices   Invoice[]
+  icalEvents IcalEvent[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   deletedAt  DateTime?
@@ -824,4 +827,68 @@ model Reservation {
   @@index([hotelId, dateFrom, dateTo])
   @@index([bookingId])
   @@map("reservations")
+}
+
+// ── Kanäle / iCal (Phase 5) ──────────────────────────────────
+
+model ChannelConnection {
+  id             String    @id @default(cuid())
+  hotelId        String
+  hotel          Hotel     @relation(fields: [hotelId], references: [id])
+  name           String
+  platform       String    @default("AIRBNB") // AIRBNB | BOOKING | OTHER
+  direction      String    @default("IMPORT") // IMPORT | EXPORT | BOTH
+  // Ohne Zimmertyp werden Importe nur gelistet (Konfliktübersicht), nicht kalenderwirksam
+  roomTypeId     String?
+  roomType       RoomType? @relation(fields: [roomTypeId], references: [id])
+  importUrl      String?
+  exportToken    String    @unique
+  active         Boolean   @default(true)
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+  events         IcalEvent[]
+  logs           ChannelSyncLog[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([hotelId])
+  @@map("channel_connections")
+}
+
+model IcalEvent {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  externalUid  String
+  summary      String?
+  description  String?
+  dateFrom     DateTime          @db.Date
+  dateTo       DateTime          @db.Date // Abreise, exklusiv
+  conflict     Boolean           @default(false)
+  conflictNote String?
+  bookingId    String?
+  booking      Booking?          @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  lastSeenAt   DateTime          @default(now())
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([connectionId, externalUid])
+  @@map("ical_events")
+}
+
+model ChannelSyncLog {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  direction    String            @default("IMPORT")
+  status       String            // OK | ERROR
+  imported     Int               @default(0)
+  updated      Int               @default(0)
+  removed      Int               @default(0)
+  conflicts    Int               @default(0)
+  message      String?
+  ranAt        DateTime          @default(now())
+
+  @@index([connectionId, ranAt])
+  @@map("channel_sync_logs")
 }
