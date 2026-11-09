@@ -1,6 +1,6 @@
 # PROJEKT-STATUS — HotelGuru
 
-**Stand:** 09.11.2026 · **Phase:** 2 abgeschlossen (Abrechnung/Rechnungslegung live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
+**Stand:** 09.11.2026 · **Phase:** 3 abgeschlossen (Meldewesen/DSGVO live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
 
 ## Live
 - **Produktion (VPS):** https://hotelsoftware.aiconso.eu — Let's-Encrypt gültig bis 07.02.2027
@@ -43,7 +43,21 @@ Für echten Produktivbetrieb: Demo-Benutzer deaktivieren/löschen (Benutzerverwa
 - **FiBu-Export:** DATEV-Buchungsstapel (DE/AT) + generischer CSV (CH), Kontenmapping
   editierbar (Debitor/Erlöskonten je Kategorie)
 - **Stammdaten-Plus:** Artikel/Leistungen mit Steuer-Schlüssel, Kurtaxe-Sätze verwaltbar
-- **Shared-Engines:** touristTax, hpSplitting, invoiceTotals, fibu — 52 Unit-Tests gesamt
+- **Shared-Engines:** touristTax, hpSplitting, invoiceTotals, fibu, registration, gdpr — 69 Unit-Tests
+
+## Phase 3 — funktional
+- **Meldewesen:** Meldeprofile DE (§29/30 BMG, nur ausländische Gäste, 1 Jahr Frist), AT
+  (Gästeblatt, alle Gäste, 2 Jahre), CH (AIG, 5 Jahre); Meldescheine entstehen automatisch
+  beim Check-in (Inländer bei foreignOnly-Profilen bewusst ausgenommen), Nachbesserung im UI,
+  Übermittelt-Status
+- **Behörden-Exporte:** DE Meldeschein-PDF (Batch), AT Gästeblatt-CSV, AT Statistik-Austria-
+  Monatsmeldung (Ankünfte/Nächtigungen je Herkunftsland), CH Kantons-CSV; Export-Historie
+- **DSGVO-Löschautomatik:** Meldescheine nach Frist anonymisiert, Gästeprofile nach
+  Inaktivität (Standard 1.095 Tage, konfigurierbar), RetentionRun-Protokoll + Audit;
+  Rechnungs-/Buchhaltungsdaten bleiben unangetastet
+- **Gästeformular** um Geburtsdatum/Staatsangehörigkeit/Ausweisdaten erweitert
+- Phase-3-Smoke (lokal + VPS): Check-in → Record (Frist korrekt +730 d), Gästeblatt-CSV,
+  Statistik-Meldung (2026-11: DE 1 Ankunft/5 Nächtigungen), Meldeschein-PDF, Löschlauf leer = korrekt
 
 ## Phase 1 — funktional
 - **Zimmerplan** (Tag/Woche/Monat/2 Monate, Drag-Auswahl → Buchung, Klick → Details, Statusfarben, Heute-Linie)
@@ -63,4 +77,4 @@ curl https://hotelsoftware.aiconso.eu/api/health
 Details + Wiederherstellung: `VPS-UEBERGABE.md`. Scope/Architektur: `docs/SCOPE.md`, `docs/DATENMODELL.md`, `docs/PHASENPLAN.md`.
 
 ## Nächste Schritte
-Phase 3: Meldewesen (Meldeprofile DE/AT/CH, Registrierungsdaten, Exporte) + DSGVO-Löschläufe
+Phase 4: Housekeeping (Zimmerstatus, Reinigungsarten, Zimmerziele, Technik-Tickets) + Personal (Dienstpläne, Urlaub)
