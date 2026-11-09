@@ -61,4 +61,50 @@ export async function hotelRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.send(config);
   });
+
+  // ── Kurtaxe-Konfiguration ──────────────────────────────────
+  app.get("/tourist-tax", async (req) => {
+    return prisma.touristTaxConfig.findMany({
+      where: { hotelId: req.user!.hotelId!, deletedAt: null },
+      orderBy: { validFrom: "asc" },
+    });
+  });
+
+  app.post("/tourist-tax", { preHandler: requireRole("ADMIN", "MANAGER") }, async (req, reply) => {
+    const body = z
+      .object({
+        name: z.string().min(1),
+        validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        adultCentsPerNight: z.number().int().min(0),
+        childUntilAge: z.number().int().min(0).max(18).default(15),
+        childCentsPerNight: z.number().int().min(0).default(0),
+      })
+      .parse(req.body);
+    if (body.validFrom >= body.validTo) {
+      return reply.code(400).send({ error: "validTo muss nach validFrom liegen" });
+    }
+    const row = await prisma.touristTaxConfig.create({
+      data: {
+        hotelId: req.user!.hotelId!,
+        name: body.name,
+        validFrom: new Date(`${body.validFrom}T00:00:00.000Z`),
+        validTo: new Date(`${body.validTo}T00:00:00.000Z`),
+        adultCentsPerNight: body.adultCentsPerNight,
+        childUntilAge: body.childUntilAge,
+        childCentsPerNight: body.childCentsPerNight,
+      },
+    });
+    await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "TouristTaxConfig", entityId: row.id, action: "CREATE", after: body });
+    return reply.code(201).send(row);
+  });
+
+  app.delete("/tourist-tax/:id", { preHandler: requireRole("ADMIN", "MANAGER") }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = await prisma.touristTaxConfig.findFirst({ where: { id, hotelId: req.user!.hotelId!, deletedAt: null } });
+    if (!row) return reply.code(404).send({ error: "Konfiguration nicht gefunden" });
+    await prisma.touristTaxConfig.update({ where: { id }, data: { deletedAt: new Date() } });
+    await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "TouristTaxConfig", entityId: id, action: "SOFT_DELETE" });
+    return reply.send({ ok: true });
+  });
 }

@@ -19,7 +19,33 @@ async function main(): Promise<void> {
 
   const existingTypes = await prisma.roomType.count({ where: { hotelId, deletedAt: null } });
   if (existingTypes > 0) {
-    console.log("ℹ️  Demo-Stammdaten bereits vorhanden — übersprungen");
+    // Nachrüsten: Kurtaxe-Config + FiBu-Mapping auch bei bestehenden Demo-Daten sichern
+    const taxCount = await prisma.touristTaxConfig.count({ where: { hotelId, deletedAt: null } });
+    if (taxCount === 0) {
+      await prisma.touristTaxConfig.create({
+        data: {
+          hotelId,
+          name: "Beherbergungsabgabe (Demo: Kitzbühel-Satz)",
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          validTo: new Date("2099-01-01T00:00:00.000Z"),
+          adultCentsPerNight: 500,
+          childUntilAge: 15,
+          childCentsPerNight: 0,
+        },
+      });
+      console.log("➕ Kurtaxe-Config nachgerüstet");
+    }
+    await prisma.accountMapping.upsert({
+      where: { hotelId_format: { hotelId, format: "DATEV" } },
+      update: {},
+      create: { hotelId, format: "DATEV", mapping: { debtorAccount: "10000", accounts: { LOGIS: "6200", FOOD: "6300", OTHER: "6400", TOURIST_TAX: "6600" } } as never },
+    });
+    await prisma.accountMapping.upsert({
+      where: { hotelId_format: { hotelId, format: "GENERIC" } },
+      update: {},
+      create: { hotelId, format: "GENERIC", mapping: { debtorAccount: "1100", accounts: { LOGIS: "3000", FOOD: "3100", OTHER: "3200", TOURIST_TAX: "3300" } } as never },
+    });
+    console.log("ℹ️  Demo-Stammdaten bereits vorhanden — Kurtaxe/Mapping sichergestellt");
     return;
   }
 
@@ -83,7 +109,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── Artikel (Phase-2-Vorbereitung: Verrechnung aufs Zimmer) ─
+  // ── Artikel (Verrechnung aufs Zimmer) ────────────────────────
   const articles: Array<[string, "FOOD" | "DRINK" | "SPA" | "SKISERVICE" | "OTHER", string, number]> = [
     ["Frühstück Buffet", "FOOD", "AT_SPEISEN_10", 1800],
     ["Halbpensionszuschlag", "FOOD", "AT_SPEISEN_10", 3200],
@@ -200,7 +226,32 @@ async function main(): Promise<void> {
     created++;
   }
 
-  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate)`);
+  // ── Kurtaxe-Konfiguration (Kitzbühel-Beispiel: 5,00 €/P/N, < 15 J. frei) ──
+  await prisma.touristTaxConfig.create({
+    data: {
+      hotelId,
+      name: "Beherbergungsabgabe (Demo: Kitzbühel-Satz)",
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      validTo: new Date("2099-01-01T00:00:00.000Z"),
+      adultCentsPerNight: 500,
+      childUntilAge: 15,
+      childCentsPerNight: 0,
+    },
+  });
+
+  // ── FiBu-Kontenmapping Defaults ──────────────────────────────
+  await prisma.accountMapping.upsert({
+    where: { hotelId_format: { hotelId, format: "DATEV" } },
+    update: {},
+    create: { hotelId, format: "DATEV", mapping: { debtorAccount: "10000", accounts: { LOGIS: "6200", FOOD: "6300", OTHER: "6400", TOURIST_TAX: "6600" } } as never },
+  });
+  await prisma.accountMapping.upsert({
+    where: { hotelId_format: { hotelId, format: "GENERIC" } },
+    update: {},
+    create: { hotelId, format: "GENERIC", mapping: { debtorAccount: "1100", accounts: { LOGIS: "3000", FOOD: "3100", OTHER: "3200", TOURIST_TAX: "3300" } } as never },
+  });
+
+  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate) + Kurtaxe-Config + FiBu-Mapping`);
 }
 
 main()

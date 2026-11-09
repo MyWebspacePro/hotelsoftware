@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { eur, type Room, type RoomType } from "../api/types";
+import { eur, type Article, type Room, type RoomType } from "../api/types";
+import { COUNTRY_DEFAULTS } from "@hg/shared";
+import type { HotelResponse } from "../api/hotelTypes";
+import type { TouristTaxConfigView } from "../api/types2";
 
 const COLORS = ["#6366f1", "#0ea5e9", "#22c55e", "#a855f7", "#f59e0b", "#ef4444", "#14b8a6", "#f97316"];
 
@@ -9,10 +12,38 @@ export function Stammdaten() {
   const queryClient = useQueryClient();
   const typesQuery = useQuery({ queryKey: ["roomTypes"], queryFn: () => api<RoomType[]>("/rooms/types") });
   const roomsQuery = useQuery({ queryKey: ["rooms"], queryFn: () => api<Room[]>("/rooms") });
+  const hotelQuery = useQuery({ queryKey: ["hotel"], queryFn: () => api<HotelResponse>("/hotel") });
+  const articlesQuery = useQuery({ queryKey: ["articles"], queryFn: () => api<Article[]>("/articles") });
+  const taxQuery = useQuery({ queryKey: ["touristTax"], queryFn: () => api<TouristTaxConfigView[]>("/hotel/tourist-tax") });
 
   const [typeForm, setTypeForm] = useState({ name: "", capacity: 2, maxExtraBeds: 0, basePrice: 120, color: COLORS[0], description: "" });
   const [roomForm, setRoomForm] = useState({ roomTypeId: "", number: "", floor: "" });
+  const [articleForm, setArticleForm] = useState({ name: "", category: "OTHER", taxRateKey: "", price: 0 });
+  const [taxForm, setTaxForm] = useState({ name: "", validFrom: "", validTo: "", adult: 5, childUntilAge: 15, child: 0 });
   const [error, setError] = useState<string | null>(null);
+
+  const taxKeys = hotelQuery.data ? COUNTRY_DEFAULTS[hotelQuery.data.country].vatRates : [];
+
+  const createArticle = useMutation({
+    mutationFn: (body: unknown) => api("/articles", { method: "POST", body }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["articles"] }); setArticleForm({ name: "", category: "OTHER", taxRateKey: "", price: 0 }); setError(null); },
+    onError: (err) => setError(err instanceof Error ? err.message : "Fehler"),
+  });
+  const deleteArticle = useMutation({
+    mutationFn: (id: string) => api(`/articles/${id}`, { method: "DELETE" }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["articles"] }),
+    onError: (err) => setError(err instanceof Error ? err.message : "Fehler"),
+  });
+  const createTax = useMutation({
+    mutationFn: (body: unknown) => api("/hotel/tourist-tax", { method: "POST", body }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["touristTax"] }); setTaxForm({ name: "", validFrom: "", validTo: "", adult: 5, childUntilAge: 15, child: 0 }); setError(null); },
+    onError: (err) => setError(err instanceof Error ? err.message : "Fehler"),
+  });
+  const deleteTax = useMutation({
+    mutationFn: (id: string) => api(`/hotel/tourist-tax/${id}`, { method: "DELETE" }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["touristTax"] }),
+    onError: (err) => setError(err instanceof Error ? err.message : "Fehler"),
+  });
 
   const createType = useMutation({
     mutationFn: (body: unknown) => api("/rooms/types", { method: "POST", body }),
@@ -119,6 +150,75 @@ export function Stammdaten() {
               </button>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Artikel (Verrechnung aufs Zimmer) */}
+      <section>
+        <h2 className="mb-2 font-medium text-slate-700">Artikel & Leistungen (Verrechnung aufs Zimmerkonto)</h2>
+        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <input placeholder="Name" value={articleForm.name} onChange={(e) => setArticleForm({ ...articleForm, name: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <select value={articleForm.category} onChange={(e) => setArticleForm({ ...articleForm, category: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            {["FOOD", "DRINK", "SPA", "SKISERVICE", "OTHER"].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={articleForm.taxRateKey} onChange={(e) => setArticleForm({ ...articleForm, taxRateKey: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <option value="">Steuer-Schlüssel…</option>
+            {taxKeys.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+          <input type="number" step={0.5} placeholder="Preis EUR" value={articleForm.price || ""} onChange={(e) => setArticleForm({ ...articleForm, price: Number(e.target.value) })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <button
+            onClick={() => createArticle.mutate({ name: articleForm.name, category: articleForm.category, taxRateKey: articleForm.taxRateKey, unitPriceCents: Math.round(articleForm.price * 100) })}
+            disabled={!articleForm.name || !articleForm.taxRateKey || createArticle.isPending}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            + Artikel
+          </button>
+        </div>
+        <div className="mt-3 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+          {articlesQuery.data?.filter((a) => a.active).map((a) => (
+            <div key={a.id} className="group relative rounded-md border border-slate-200 px-2 py-1.5 text-sm">
+              <span className="font-medium text-slate-700">{a.name}</span>
+              <span className="ml-1 text-xs text-slate-400">{a.category}</span>
+              <span className="block text-xs text-slate-500">{eur(a.unitPriceCents)} · {a.taxRateKey}</span>
+              <button
+                onClick={() => deleteArticle.mutate(a.id)}
+                className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white group-hover:flex"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Kurtaxe-Konfiguration */}
+      <section>
+        <h2 className="mb-2 font-medium text-slate-700">Kurtaxe / Beherbergungsabgabe</h2>
+        <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <input placeholder="Name" value={taxForm.name} onChange={(e) => setTaxForm({ ...taxForm, name: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <input type="date" title="Gültig von" value={taxForm.validFrom} onChange={(e) => setTaxForm({ ...taxForm, validFrom: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <input type="date" title="Gültig bis (exklusiv)" value={taxForm.validTo} onChange={(e) => setTaxForm({ ...taxForm, validTo: e.target.value })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <input type="number" step={0.1} title="Erwachsene EUR/Nacht" placeholder="EUR Erw./Nacht" value={taxForm.adult || ""} onChange={(e) => setTaxForm({ ...taxForm, adult: Number(e.target.value) })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <input type="number" title="Kinder bis Alter" value={taxForm.childUntilAge} onChange={(e) => setTaxForm({ ...taxForm, childUntilAge: Number(e.target.value) })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <input type="number" step={0.1} title="Kind EUR/Nacht" placeholder="EUR Kind/Nacht" value={taxForm.child} onChange={(e) => setTaxForm({ ...taxForm, child: Number(e.target.value) })} className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <button
+            onClick={() => createTax.mutate({ name: taxForm.name, validFrom: taxForm.validFrom, validTo: taxForm.validTo, adultCentsPerNight: Math.round(taxForm.adult * 100), childUntilAge: taxForm.childUntilAge, childCentsPerNight: Math.round(taxForm.child * 100) })}
+            disabled={!taxForm.name || !taxForm.validFrom || !taxForm.validTo || createTax.isPending}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          >
+            + Konfiguration
+          </button>
+        </div>
+        <div className="mt-3 space-y-1.5">
+          {taxQuery.data?.map((t) => (
+            <div key={t.id} className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
+              <span className="font-medium text-slate-700">{t.name}</span>
+              <span className="text-xs text-slate-500">{t.validFrom.slice(0, 10)} → {t.validTo.slice(0, 10)} (exkl.)</span>
+              <span className="text-slate-600">Erw. {eur(t.adultCentsPerNight)}/Nacht · Kinder bis {t.childUntilAge} J.: {t.childCentsPerNight === 0 ? "abgabenfrei" : eur(t.childCentsPerNight) + "/Nacht"}</span>
+              <button onClick={() => deleteTax.mutate(t.id)} className="ml-auto rounded bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100">Löschen</button>
+            </div>
+          ))}
+          {taxQuery.data?.length === 0 && <div className="text-sm text-slate-400">Keine Kurtaxe konfiguriert — bei Check-in wird keine gebucht.</div>}
         </div>
       </section>
     </div>

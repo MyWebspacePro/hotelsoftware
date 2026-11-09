@@ -52,6 +52,14 @@ model Hotel {
   guests       Guest[]
   bookings     Booking[]
   reservations Reservation[]
+  folios       FolioAccount[]
+  folioEntries FolioEntry[]
+  invoices     Invoice[]
+  payments     Payment[]
+  invoiceSeries InvoiceSeries[]
+  dayClosings  DayClosing[]
+  accountMappings AccountMapping[]
+  touristTaxConfigs TouristTaxConfig[]
 
   @@map("hotels")
 }
@@ -134,6 +142,226 @@ enum ArticleCategory {
   SPA
   SKISERVICE
   OTHER
+}
+
+// ── Abrechnung (Phase 2) ─────────────────────────────────────
+
+enum FolioType {
+  GUEST
+  GROUP
+  COMPANY
+}
+
+enum FolioEntryKind {
+  CHARGE
+  CREDIT
+  DISCOUNT
+}
+
+enum InvoiceType {
+  STANDARD
+  ADVANCE
+  CREDIT
+  CONSOLIDATED
+}
+
+enum InvoiceStatus {
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  SEPA
+  ONLINE
+  VOUCHER
+  TRANSFER
+}
+
+enum FibuFormat {
+  DATEV
+  GENERIC
+}
+
+model FolioAccount {
+  id        String       @id @default(cuid())
+  hotelId   String
+  hotel     Hotel        @relation(fields: [hotelId], references: [id])
+  bookingId String?
+  booking   Booking?     @relation(fields: [bookingId], references: [id])
+  type      FolioType    @default(GUEST)
+  title     String?
+  open      Boolean      @default(true)
+  entries   FolioEntry[]
+  invoices  Invoice[]
+  payments  Payment[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
+
+  @@index([hotelId, bookingId])
+  @@map("folio_accounts")
+}
+
+model FolioEntry {
+  id           String         @id @default(cuid())
+  hotelId      String
+  hotel        Hotel          @relation(fields: [hotelId], references: [id])
+  folioId      String
+  folio        FolioAccount   @relation(fields: [folioId], references: [id])
+  kind         FolioEntryKind @default(CHARGE)
+  articleId    String?
+  article      Article?       @relation(fields: [articleId], references: [id])
+  text         String
+  qty          Int            @default(1)
+  unitPriceCents Int
+  totalCents   Int
+  taxRateKey   String
+  taxRate      Float          @default(0)
+  taxCategory  String         @default("OTHER") // LOGIS | FOOD | OTHER
+  isTouristTax Boolean        @default(false)
+  nightDate    DateTime?      @db.Date
+  source       String         @default("MANUAL") // MANUAL | AUTO_STAY | REVERSAL
+  invoiceId    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  @@index([hotelId, folioId])
+  @@map("folio_entries")
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  hotelId      String
+  hotel        Hotel         @relation(fields: [hotelId], references: [id])
+  number       String
+  series       String
+  type         InvoiceType   @default(STANDARD)
+  status       InvoiceStatus @default(ISSUED)
+  bookingId    String?
+  booking      Booking?      @relation(fields: [bookingId], references: [id])
+  folioId      String?
+  folio        FolioAccount? @relation(fields: [folioId], references: [id])
+  guestId      String?
+  guest        Guest?        @relation(fields: [guestId], references: [id])
+  guestName    String?
+  currency     String        @default("EUR")
+  date         DateTime
+  netCents     Int
+  taxCents     Int
+  grossCents   Int
+  taxBreakdown Json          @default("[]")
+  lines        InvoiceLine[]
+  payments     Payment[]
+  cancelOfId   String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([hotelId, number])
+  @@index([hotelId, date])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String   @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+  position       Int
+  text           String
+  qty            Int
+  unitPriceCents Int
+  totalCents     Int
+  taxRateKey     String
+  taxRate        Float
+  taxCategory    String
+  isTouristTax   Boolean  @default(false)
+
+  @@index([invoiceId])
+  @@map("invoice_lines")
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  hotelId     String
+  hotel       Hotel         @relation(fields: [hotelId], references: [id])
+  folioId     String?
+  folio       FolioAccount? @relation(fields: [folioId], references: [id])
+  invoiceId   String?
+  invoice     Invoice?      @relation(fields: [invoiceId], references: [id])
+  method      PaymentMethod @default(CASH)
+  amountCents Int
+  date        DateTime
+  reference   String?
+  note        String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+  deletedAt   DateTime?
+
+  @@index([hotelId, date])
+  @@map("payments")
+}
+
+model InvoiceSeries {
+  id         String @id @default(cuid())
+  hotelId    String
+  hotel      Hotel  @relation(fields: [hotelId], references: [id])
+  country    Country
+  year       Int
+  prefix     String @default("RE")
+  nextNumber Int    @default(1)
+
+  @@unique([hotelId, country, year])
+  @@map("invoice_series")
+}
+
+model DayClosing {
+  id          String   @id @default(cuid())
+  hotelId     String
+  hotel       Hotel    @relation(fields: [hotelId], references: [id])
+  date        DateTime @db.Date
+  totals      Json     @default("{}") // je Zahlart {method, amountCents, count}
+  taxTotals   Json     @default("[]") // je Steuer-Schlüssel {taxRateKey, netCents, taxCents}
+  folioTotals Json     @default("{}") // {chargeCents, creditCents}
+  closedById  String?
+  closedAt    DateTime @default(now())
+
+  @@unique([hotelId, date])
+  @@map("day_closings")
+}
+
+model AccountMapping {
+  id        String     @id @default(cuid())
+  hotelId   String
+  hotel     Hotel      @relation(fields: [hotelId], references: [id])
+  format    FibuFormat @default(DATEV)
+  mapping   Json       @default("{}") // FibuMapping-Struktur
+  updatedAt DateTime   @updatedAt
+
+  @@unique([hotelId, format])
+  @@map("account_mappings")
+}
+
+model TouristTaxConfig {
+  id        String   @id @default(cuid())
+  hotelId   String
+  hotel     Hotel    @relation(fields: [hotelId], references: [id])
+  name      String
+  validFrom DateTime @db.Date
+  validTo   DateTime @db.Date
+  adultCentsPerNight Int
+  childUntilAge      Int    @default(15)
+  childCentsPerNight Int    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([hotelId, validFrom])
+  @@map("tourist_tax_configs")
 }
 
 model RoomType {
@@ -223,6 +451,7 @@ model Article {
   unitPriceCents  Int
   chargeToRoom    Boolean         @default(true)
   active          Boolean         @default(true)
+  folioEntries    FolioEntry[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
@@ -250,6 +479,7 @@ model Guest {
   marketingConsent Boolean   @default(false)
   notes            String?
   bookings         Booking[]
+  invoices         Invoice[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
@@ -269,6 +499,8 @@ model Booking {
   channelRef String?
   notes      String?
   reservations Reservation[]
+  folios     FolioAccount[]
+  invoices   Invoice[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   deletedAt  DateTime?

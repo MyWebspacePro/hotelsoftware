@@ -319,6 +319,14 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
       await tx.reservation.updateMany({ where: { bookingId: id, deletedAt: null }, data: { status: body.status } });
       return tx.booking.findFirstOrThrow({ where: { id }, include: bookingInclude });
     });
+    // Automatische Postings: Check-in → Logis/Kurtaxe aufs Folio; Storno/No-Show → Rückbuchung
+    if (body.status === "CHECKED_IN") {
+      const { postStay } = await import("../lib/postings.js");
+      await postStay(req.user!.hotelId!, id);
+    } else if (body.status === "CANCELLED" || body.status === "NO_SHOW") {
+      const { reverseStay } = await import("../lib/postings.js");
+      await reverseStay(req.user!.hotelId!, id);
+    }
     await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "Booking", entityId: id, action: `STATUS_${body.status}`, before: { status: booking.status }, after: { status: body.status } });
     return reply.send(updated);
   });

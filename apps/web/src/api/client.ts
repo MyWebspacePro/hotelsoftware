@@ -64,3 +64,14 @@ export async function api<T>(
 
   return (await res.json()) as T;
 }
+
+/** Binärdownload (z. B. PDF/CSV) als Objekt-URL (Blob). */
+export async function apiBlob(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { headers });
+  if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}

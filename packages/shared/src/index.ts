@@ -4,3 +4,7 @@ export * from "./dates.js";
 export * from "./availability.js";
 export * from "./pricing.js";
 export * from "./bookingStatus.js";
+export * from "./touristTax.js";
+export * from "./hpSplitting.js";
+export * from "./invoice.js";
+export * from "./fibu.js";
