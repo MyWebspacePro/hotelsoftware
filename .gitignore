@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secrets — niemals committen (nur .env.example!)
+.env
+.env.local
+.env.*.local
+
+# Lokale Daten
+backups/
+*.log
+.DS_Store

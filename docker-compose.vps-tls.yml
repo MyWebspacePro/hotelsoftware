@@ -1,0 +1,28 @@
+# TLS-Zusatz für die VPS-Variante: hängt "web" ins Coolify-Netzwerk,
+# Traefik übernimmt Domain-Routing + Let's-Encrypt automatisch.
+# Voraussetzung: APP_DOMAIN in .env gesetzt und A-Record zeigt auf den Server.
+services:
+  web:
+    networks:
+      - default
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.middlewares.hs-gzip.compress=true
+      - traefik.http.middlewares.hs-redirect.redirectscheme.scheme=https
+      - traefik.http.routers.hs-http.entryPoints=http
+      - traefik.http.routers.hs-http.middlewares=hs-redirect
+      - traefik.http.routers.hs-http.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/`)
+      - traefik.http.routers.hs-http.service=hs
+      - traefik.http.routers.hs-https.entryPoints=https
+      - traefik.http.routers.hs-https.middlewares=hs-gzip
+      - traefik.http.routers.hs-https.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/`)
+      - traefik.http.routers.hs-https.service=hs
+      - traefik.http.routers.hs-https.tls=true
+      - traefik.http.routers.hs-https.tls.certresolver=letsencrypt
+      - traefik.http.services.hs.loadbalancer.server.port=80
+
+networks:
+  coolify:
+    external: true

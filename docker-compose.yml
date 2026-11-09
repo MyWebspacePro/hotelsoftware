@@ -1,0 +1,53 @@
+# Lokale Entwicklung: nur Infrastruktur (API/Web laufen via `npm run dev`).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hg-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hotel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hotel}
+      POSTGRES_DB: ${POSTGRES_DB:-hotel}
+    ports:
+      # Bewusst abweichend vom Werkstattmanager (wm-db belegt 5432 lokal)
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hotel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hg-mailhog
+    restart: unless-stopped
+    ports:
+      - "1026:1025"   # SMTP (8026 Web-UI, abweichend vom Werkstattmanager)
+      - "8026:8025"   # Web-UI
+
+  backup:
+    image: postgres:16-alpine
+    container_name: hg-backup
+    restart: unless-stopped
+    profiles: ["backup"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-hotel}
+    volumes:
+      - ./backups:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U ${POSTGRES_USER:-hotel} ${POSTGRES_DB:-hotel} | gzip > /backups/hotel_$$(date +%Y%m%d_%H%M%S).sql.gz
+          find /backups -name "*.sql.gz" -mtime +30 -delete
+          sleep 86400
+        done
+
+volumes:
+  db_data:

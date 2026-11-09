@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  RECEPTION
+  HOUSEKEEPING
+  SERVICE
+}
+
+enum Country {
+  DE
+  AT
+  CH
+}
+
+enum Currency {
+  EUR
+  CHF
+}
+
+// ── Organisation (Multi-Property über hotelId ab Tag 1) ──────
+
+model Hotel {
+  id           String        @id @default(cuid())
+  name         String
+  address      String?
+  zip          String?
+  city         String?
+  country      Country       @default(DE)
+  currency     Currency      @default(EUR)
+  language     String        @default("de")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  users        User[]
+  systemConfig SystemConfig?
+
+  @@map("hotels")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role      @default(RECEPTION)
+  active       Boolean   @default(true)
+  hotelId      String?
+  hotel        Hotel?    @relation(fields: [hotelId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@map("users")
+}
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  hotelId   String   @unique
+  hotel     Hotel    @relation(fields: [hotelId], references: [id])
+  // DACH-Konfiguration: USt-Matrix, Kurtaxe, Meldeprofile, Löschfristen, Optionen
+  config    Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  hotelId   String?
+  userId    String?
+  entity    String
+  entityId  String?
+  action    String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([hotelId, createdAt])
+
+  @@map("audit_logs")
+}
