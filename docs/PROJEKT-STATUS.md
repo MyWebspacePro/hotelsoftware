@@ -1,6 +1,6 @@
 # PROJEKT-STATUS — HotelGuru
 
-**Stand:** 09.11.2026 · **Phase:** 3 abgeschlossen (Meldewesen/DSGVO live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
+**Stand:** 09.11.2026 · **Phase:** 4 abgeschlossen (Housekeeping/Personal live) · **Repo:** github.com/MyWebspacePro/hotelsoftware
 
 ## Live
 - **Produktion (VPS):** https://hotelsoftware.aiconso.eu — Let's-Encrypt gültig bis 07.02.2027
@@ -54,8 +54,19 @@ Demo-Benutzer (Rollen vorhanden): admin@ / manager@ / rezeption@ / housekeeping@
   Inaktivität (Standard 1.095 Tage, konfigurierbar), RetentionRun-Protokoll + Audit;
   Rechnungs-/Buchhaltungsdaten bleiben unangetastet
 - **Gästeformular** um Geburtsdatum/Staatsangehörigkeit/Ausweisdaten erweitert
-- Phase-3-Smoke (lokal + VPS): Check-in → Record (Frist korrekt +730 d), Gästeblatt-CSV,
-  Statistik-Meldung (2026-11: DE 1 Ankunft/5 Nächtigungen), Meldeschein-PDF, Löschlauf leer = korrekt
+## Phase 4 — funktional
+- **Housekeeping-Board:** pro Tag alle 50 Zimmer mit Belegungskontext (Abreise/bleibt/Anreise/
+  frei), Reinigungsstatus (Clean/Dirty/Inspected/Blocked), DND-Schalter, automatische Task-
+  Generierung (Checkout-/Stayover-Reinigung), DEEP/Laundry-Tasks, Zuweisung an HK-Team,
+  Fertigmeldung; Technik-Tickets mit Priorität und Statusfluss
+- **Personal:** 15 Demo-Mitarbeiter, Schichtvorlagen (Früh/Spät Rezeption, Zimmerteams,
+  Service, Küche, Wellness), Wochen-Dienstplan-Editor, Urlaubsanträge mit Genehmigungsfluss,
+  Jahresübersicht mit Kontingenten und Monatsverteilung
+- **Sicherheit (nach Vorfall/Vorfallstest 09.11.2026):** Login-Rate-Limit (10 Fehlversuche →
+  15 min Sperre pro IP+E-Mail), Zugangsdaten entfernt aus Repo, JWT-Secrets rotiert,
+  alle Passwörter gewechselt
+- Phase-4-Smoke (lokal + VPS): Task-Generierung, Status/DND/Tasks, Tickets, 40 Schichten/Woche,
+  Urlaubsübersicht — alle Endpunkte online verifiziert
 
 ## Phase 1 — funktional
 - **Zimmerplan** (Tag/Woche/Monat/2 Monate, Drag-Auswahl → Buchung, Klick → Details, Statusfarben, Heute-Linie)
@@ -75,4 +86,4 @@ curl https://hotelsoftware.aiconso.eu/api/health
 Details + Wiederherstellung: `VPS-UEBERGABE.md`. Scope/Architektur: `docs/SCOPE.md`, `docs/DATENMODELL.md`, `docs/PHASENPLAN.md`.
 
 ## Nächste Schritte
-Phase 4: Housekeeping (Zimmerstatus, Reinigungsarten, Zimmerziele, Technik-Tickets) + Personal (Dienstpläne, Urlaub)
+Phase 5: Öffentliche Buchungsanfrage (Verfügbarkeitscheck + Formular) + iCal-Kanäle (Airbnb/Booking.com Import/Export)
