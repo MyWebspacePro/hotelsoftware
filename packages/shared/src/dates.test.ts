@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, daysBetween, eachNight, isValidIsoDate, nightsBetween, overlaps, toIsoDate } from "./dates.js";
+import { addDays, daysBetween, eachNight, inclusiveDays, isValidIsoDate, nightsBetween, overlaps, startOfWeek, toIsoDate } from "./dates.js";
 
 describe("dates", () => {
   it("addDays über Monats- und Jahresgrenzen", () => {
@@ -30,5 +30,18 @@ describe("dates", () => {
     expect(isValidIsoDate("2026-06-15")).toBe(true);
     expect(isValidIsoDate("2026-06-32")).toBe(false);
     expect(isValidIsoDate("15.06.2026")).toBe(false);
+  });
+
+  it("startOfWeek: Montag der Woche (auch bei Sonntag)", () => {
+    // 2026-11-09 ist ein Montag
+    expect(startOfWeek("2026-11-09")).toBe("2026-11-09");
+    expect(startOfWeek("2026-11-11")).toBe("2026-11-09");
+    expect(startOfWeek("2026-11-15")).toBe("2026-11-09"); // Sonntag
+  });
+
+  it("inclusiveDays für Urlaubsanträge", () => {
+    expect(inclusiveDays("2026-08-03", "2026-08-07")).toBe(5);
+    expect(inclusiveDays("2026-08-07", "2026-08-07")).toBe(1);
+    expect(inclusiveDays("2026-08-07", "2026-08-03")).toBe(0);
   });
 });

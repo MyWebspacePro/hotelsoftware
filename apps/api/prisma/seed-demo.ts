@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   const existingTypes = await prisma.roomType.count({ where: { hotelId, deletedAt: null } });
   if (existingTypes > 0) {
-    // Nachrüsten: Kurtaxe-Config + FiBu-Mapping auch bei bestehenden Demo-Daten sichern
+    // Nachrüsten: Kurtaxe/FiBu (Phase 2), Personal (Phase 4) bei bestehenden Daten sichern
     const taxCount = await prisma.touristTaxConfig.count({ where: { hotelId, deletedAt: null } });
     if (taxCount === 0) {
       await prisma.touristTaxConfig.create({
@@ -45,7 +45,12 @@ async function main(): Promise<void> {
       update: {},
       create: { hotelId, format: "GENERIC", mapping: { debtorAccount: "1100", accounts: { LOGIS: "3000", FOOD: "3100", OTHER: "3200", TOURIST_TAX: "3300" } } as never },
     });
-    console.log("ℹ️  Demo-Stammdaten bereits vorhanden — Kurtaxe/Mapping sichergestellt");
+    const employeeCount = await prisma.employee.count({ where: { hotelId, deletedAt: null } });
+    if (employeeCount === 0) {
+      await seedStaff(hotelId);
+      console.log("➕ Personal-Daten nachgerüstet");
+    }
+    console.log("ℹ️  Demo-Stammdaten bereits vorhanden — Nachrüstungen sichergestellt");
     return;
   }
 
@@ -251,7 +256,123 @@ async function main(): Promise<void> {
     create: { hotelId, format: "GENERIC", mapping: { debtorAccount: "1100", accounts: { LOGIS: "3000", FOOD: "3100", OTHER: "3200", TOURIST_TAX: "3300" } } as never },
   });
 
-  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate) + Kurtaxe-Config + FiBu-Mapping`);
+  // ── Personal (Phase 4) ──────────────────────────────────────
+  await seedStaff(hotelId);
+
+  console.log(`✅ Demo-Daten: ${types.length} Zimmertypen, 50 Zimmer, 3 Ratenpläne, ${seasons.length * types.length} Preisregeln, ${articles.length} Artikel, ${guests.length} Gäste, ${created} Buchungen (±3 Monate) + Kurtaxe + FiBu + Personal`);
+}
+
+/** Personal-Demodaten: 15 Mitarbeiter, Vorlagen, Dienstplan ±1 Woche, Urlaube, Tickets. */
+async function seedStaff(hotelId: string): Promise<void> {
+  const { addDays, startOfWeek, todayIso } = await import("@hg/shared");
+
+  const defs: Array<[string, string, number]> = [
+    ["Lena Huber", "RECEPTION", 25], ["Marco Gruber", "RECEPTION", 25],
+    ["Sara Pichler", "RECEPTION", 25], ["Milena Petrova", "HOUSEKEEPING", 22],
+    ["Ivana Novak", "HOUSEKEEPING", 22], ["Maria Steiner", "HOUSEKEEPING", 22],
+    ["Jana Weber", "HOUSEKEEPING", 22], ["Toni Brunner", "HOUSEKEEPING", 22],
+    ["Chef Koch Anton", "KITCHEN", 25], ["Sous-Chef Boris", "KITCHEN", 25],
+    ["Kevin Maisch", "SERVICE", 22], ["Nina Falk", "SERVICE", 22],
+    ["Hans Meister", "TECH", 24], ["Emma Klar", "WELLNESS", 22],
+    ["Josef Brandstätter (Demo)", "ADMIN", 30],
+  ];
+  const employees: Record<string, { id: string; name: string }> = {};
+  for (const [name, department, quota] of defs) {
+    const e = await prisma.employee.create({ data: { hotelId, name, department: department as never, vacationQuotaDays: quota } });
+    employees[name] = { id: e.id, name };
+  }
+
+  const templates: Array<[string, string, string, string]> = [
+    ["Frühdienst Rezeption", "RECEPTION", "07:00", "15:00"],
+    ["Spätdienst Rezeption", "RECEPTION", "15:00", "23:00"],
+    ["Zimmerteam A", "HOUSEKEEPING", "08:30", "16:30"],
+    ["Zimmerteam B", "HOUSEKEEPING", "09:00", "17:00"],
+    ["Service Frühstück", "SERVICE", "06:30", "14:30"],
+    ["Service Abends", "SERVICE", "17:00", "23:30"],
+    ["Küche Früh", "KITCHEN", "06:00", "15:00"],
+    ["Wellness-Nachmittag", "WELLNESS", "14:00", "20:00"],
+  ];
+  const templateByName: Record<string, { department: string; fromTime: string; toTime: string }> = {};
+  for (const [name, department, fromTime, toTime] of templates) {
+    const t = await prisma.shiftTemplate.create({ data: { hotelId, name, department: department as never, fromTime, toTime } });
+    templateByName[name] = { department, fromTime, toTime };
+  }
+  void templateByName;
+
+  // Dienstplan für diese und nächste Woche (Mo–So): Rezeption 2 Schichten/Tag,
+  // Zimmerteam A/B täglich, Service/Küche an 6 Tagen
+  const teamA = [employees["Milena Petrova"].id, employees["Ivana Novak"].id];
+  const teamB = [employees["Maria Steiner"].id, employees["Jana Weber"].id];
+  const recFrüh = [employees["Lena Huber"].id];
+  const recSpät = [employees["Marco Gruber"].id];
+  const monday = startOfWeek(todayIso());
+  let shiftCount = 0;
+  for (let w = 0; w < 2; w++) {
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(`${addDays(monday, w * 7 + d)}T00:00:00.000Z`);
+      const recMorning = d % 2 === 0 ? recFrüh : recSpät;
+      const recEvening = d % 2 === 0 ? recSpät : recFrüh;
+      await prisma.shift.create({
+        data: { hotelId, date, department: "RECEPTION", fromTime: "07:00", toTime: "15:00", assignments: { create: recMorning.map((employeeId) => ({ employeeId })) } },
+      });
+      await prisma.shift.create({
+        data: { hotelId, date, department: "RECEPTION", fromTime: "15:00", toTime: "23:00", assignments: { create: recEvening.map((employeeId) => ({ employeeId })) } },
+      });
+      await prisma.shift.create({
+        data: { hotelId, date, department: "HOUSEKEEPING", fromTime: "08:30", toTime: "16:30", assignments: { create: teamA.map((employeeId) => ({ employeeId })) } },
+      });
+      if (d % 2 === 1) {
+        await prisma.shift.create({
+          data: { hotelId, date, department: "HOUSEKEEPING", fromTime: "09:00", toTime: "17:00", assignments: { create: teamB.map((employeeId) => ({ employeeId })) } },
+        });
+      }
+      if (d < 6) {
+        await prisma.shift.create({
+          data: { hotelId, date, department: "KITCHEN", fromTime: "06:00", toTime: "15:00", assignments: { create: [{ employeeId: employees["Chef Koch Anton"].id }] } },
+        });
+        await prisma.shift.create({
+          data: { hotelId, date, department: "SERVICE", fromTime: "17:00", toTime: "23:30", assignments: { create: [{ employeeId: employees["Kevin Maisch"].id }, { employeeId: employees["Nina Falk"].id }] } },
+        });
+      }
+      if (d >= 3) {
+        await prisma.shift.create({
+          data: { hotelId, date, department: "WELLNESS", fromTime: "14:00", toTime: "20:00", assignments: { create: [{ employeeId: employees["Emma Klar"].id }] } },
+        });
+      }
+      shiftCount += d < 6 ? 6 : 5;
+    }
+  }
+
+  // Urlaubsanträge: einer genehmigt (Milena, 2. Woche Jän.), einer offen
+  await prisma.vacationRequest.create({
+    data: {
+      hotelId,
+      employeeId: employees["Milena Petrova"].id,
+      dateFrom: new Date("2027-01-11T00:00:00.000Z"),
+      dateTo: new Date("2027-01-15T00:00:00.000Z"),
+      days: 5,
+      status: "APPROVED",
+      approverId: null,
+      decidedAt: new Date(),
+    },
+  });
+  await prisma.vacationRequest.create({
+    data: {
+      hotelId,
+      employeeId: employees["Kevin Maisch"].id,
+      dateFrom: new Date("2026-12-28T00:00:00.000Z"),
+      dateTo: new Date("2027-01-02T00:00:00.000Z"),
+      days: 6,
+      status: "PENDING",
+    },
+  });
+
+  // Technik-Tickets
+  await prisma.maintenanceTicket.create({ data: { hotelId, roomId: null, area: "Wellness", title: "Infrarotkabine 2 defekt", description: "Heizstrahler 2 zündet nicht. Techniker kommen lassen.", priority: "HIGH", status: "OPEN" } });
+  await prisma.maintenanceTicket.create({ data: { hotelId, roomId: null, area: "Küche", title: "Spülmaschine läuft aus", description: "Dichtung links vorne. Notfall-Reparatur beauftragt.", priority: "NORMAL", status: "IN_PROGRESS" } });
+  await prisma.maintenanceTicket.create({ data: { hotelId, roomId: null, area: "Außenbereich", title: "Wintermarkise Terrasse montiert", priority: "LOW", status: "DONE", resolvedAt: new Date() } });
+
+  void shiftCount;
 }
 
 main()

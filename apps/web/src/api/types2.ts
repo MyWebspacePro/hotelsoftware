@@ -142,6 +142,22 @@ export interface AccountMappingView {
   mapping: { debtorAccount: string; accounts: Record<string, string> };
 }
 
+export interface Employee {
+  id: string;
+  name: string;
+  department: "RECEPTION" | "KITCHEN" | "SERVICE" | "HOUSEKEEPING" | "TECH" | "WELLNESS" | "ADMIN";
+  active: boolean;
+  vacationQuotaDays: number;
+}
+
+export interface ShiftTemplate {
+  id: string;
+  name: string;
+  department: Employee["department"];
+  fromTime: string;
+  toTime: string;
+}
+
 // ── Phase 3: Meldewesen & DSGVO ──────────────────────────────
 
 export interface RegistrationProfileView {

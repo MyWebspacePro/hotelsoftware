@@ -63,6 +63,13 @@ model Hotel {
   registrationRecords RegistrationRecord[]
   registrationExports RegistrationExport[]
   retentionRuns RetentionRun[]
+  roomStatuses  RoomStatus[]
+  housekeepingTasks HousekeepingTask[]
+  maintenanceTickets MaintenanceTicket[]
+  employees     Employee[]
+  shiftTemplates ShiftTemplate[]
+  shifts        Shift[]
+  vacationRequests VacationRequest[]
 
   @@map("hotels")
 }
@@ -442,6 +449,202 @@ model RetentionRun {
   @@map("retention_runs")
 }
 
+// ── Housekeeping & Personal (Phase 4) ────────────────────────
+
+enum CleanStatus {
+  CLEAN
+  DIRTY
+  INSPECTED
+  BLOCKED
+}
+
+enum TaskType {
+  CHECKOUT
+  STAYOVER
+  DEEP
+  LAUNDRY
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  SKIPPED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+}
+
+model RoomStatus {
+  id          String      @id @default(cuid())
+  hotelId     String
+  hotel       Hotel       @relation(fields: [hotelId], references: [id])
+  roomId      String
+  room        Room        @relation(fields: [roomId], references: [id])
+  date        DateTime    @db.Date
+  cleanStatus CleanStatus @default(DIRTY)
+  dnd         Boolean     @default(false)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([roomId, date])
+  @@index([hotelId, date])
+  @@map("room_statuses")
+}
+
+model HousekeepingTask {
+  id         String     @id @default(cuid())
+  hotelId    String
+  hotel      Hotel      @relation(fields: [hotelId], references: [id])
+  roomId     String
+  room       Room       @relation(fields: [roomId], references: [id])
+  date       DateTime   @db.Date
+  type       TaskType   @default(STAYOVER)
+  status     TaskStatus @default(OPEN)
+  assigneeId String?
+  assignee   Employee?  @relation(fields: [assigneeId], references: [id])
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  @@index([hotelId, date])
+  @@map("housekeeping_tasks")
+}
+
+model MaintenanceTicket {
+  id          String        @id @default(cuid())
+  hotelId     String
+  hotel       Hotel         @relation(fields: [hotelId], references: [id])
+  roomId      String?
+  room        Room?         @relation(fields: [roomId], references: [id])
+  area        String?
+  title       String
+  description String?
+  priority    TicketPriority @default(NORMAL)
+  status      TicketStatus  @default(OPEN)
+  createdById String?
+  resolvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  @@index([hotelId, status])
+  @@map("maintenance_tickets")
+}
+
+enum Department {
+  RECEPTION
+  KITCHEN
+  SERVICE
+  HOUSEKEEPING
+  TECH
+  WELLNESS
+  ADMIN
+}
+
+enum VacationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Employee {
+  id               String     @id @default(cuid())
+  hotelId          String
+  hotel            Hotel      @relation(fields: [hotelId], references: [id])
+  userId           String?
+  name             String
+  department       Department @default(RECEPTION)
+  active           Boolean    @default(true)
+  vacationQuotaDays Int       @default(25)
+  housekeepingTasks HousekeepingTask[]
+  shiftAssignments ShiftAssignment[]
+  vacationRequests VacationRequest[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+
+  @@index([hotelId, department])
+  @@map("employees")
+}
+
+model ShiftTemplate {
+  id         String     @id @default(cuid())
+  hotelId    String
+  hotel      Hotel      @relation(fields: [hotelId], references: [id])
+  name       String
+  department Department @default(RECEPTION)
+  fromTime   String     // "07:00"
+  toTime     String     // "15:00"
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  @@index([hotelId])
+  @@map("shift_templates")
+}
+
+model Shift {
+  id         String     @id @default(cuid())
+  hotelId    String
+  hotel      Hotel      @relation(fields: [hotelId], references: [id])
+  date       DateTime   @db.Date
+  department Department @default(RECEPTION)
+  fromTime   String
+  toTime     String
+  note       String?
+  assignments ShiftAssignment[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  @@index([hotelId, date])
+  @@map("shifts")
+}
+
+model ShiftAssignment {
+  id         String   @id @default(cuid())
+  shiftId    String
+  shift      Shift    @relation(fields: [shiftId], references: [id])
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([shiftId, employeeId])
+  @@map("shift_assignments")
+}
+
+model VacationRequest {
+  id         String         @id @default(cuid())
+  hotelId    String
+  hotel      Hotel          @relation(fields: [hotelId], references: [id])
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id])
+  dateFrom   DateTime       @db.Date
+  dateTo     DateTime       @db.Date
+  days       Int
+  status     VacationStatus @default(PENDING)
+  approverId String?
+  note       String?
+  decidedAt  DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+
+  @@index([hotelId, status])
+  @@map("vacation_requests")
+}
+
 model RoomType {
   id            String        @id @default(cuid())
   hotelId       String
@@ -473,6 +676,9 @@ model Room {
   floor      Int?
   notes      String?
   reservations Reservation[]
+  roomStatuses RoomStatus[]
+  housekeepingTasks HousekeepingTask[]
+  maintenanceTickets MaintenanceTicket[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   deletedAt  DateTime?

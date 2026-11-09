@@ -50,3 +50,18 @@ export function overlaps(aFrom: string, aTo: string, bFrom: string, bTo: string)
 export function todayIso(): string {
   return toIsoDate(new Date());
 }
+
+/** Montag der Woche (ISO 8601: Woche beginnt Montag). */
+export function startOfWeek(iso: string): string {
+  const d = parseIsoDate(iso);
+  const day = d.getUTCDay(); // 0 = So … 6 = Sa
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return toIsoDate(d);
+}
+
+/** Kalendertage inklusive beider Enden (Urlaubstage). */
+export function inclusiveDays(fromIso: string, toIso: string): number {
+  if (toIso < fromIso) return 0;
+  return daysBetween(fromIso, toIso) + 1;
+}
