@@ -32,6 +32,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <NavLink to="/preise" className={navClass}>Preise</NavLink>
             <NavLink to="/rechnungen" className={navClass}>Rechnungen</NavLink>
             <NavLink to="/abrechnung" className={navClass}>Kasse</NavLink>
+            <NavLink to="/meldewesen" className={navClass}>Meldewesen</NavLink>
             <NavLink to="/benutzer" className={navClass}>{t("nav.users")}</NavLink>
             <NavLink to="/profil" className={navClass}>{t("nav.profile")}</NavLink>
           </nav>

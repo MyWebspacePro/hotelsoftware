@@ -12,6 +12,7 @@ import { Stammdaten } from "./pages/Stammdaten";
 import { Preise } from "./pages/Preise";
 import { Rechnungen } from "./pages/Rechnungen";
 import { Abrechnung } from "./pages/Abrechnung";
+import { Meldewesen } from "./pages/Meldewesen";
 
 const page = (element: React.ReactNode) => (
   <ProtectedRoute>
@@ -31,6 +32,7 @@ export default function App() {
       <Route path="/preise" element={page(<Preise />)} />
       <Route path="/rechnungen" element={page(<Rechnungen />)} />
       <Route path="/abrechnung" element={page(<Abrechnung />)} />
+      <Route path="/meldewesen" element={page(<Meldewesen />)} />
       <Route path="/benutzer" element={page(<Users />)} />
       <Route path="/profil" element={page(<Profile />)} />
       <Route path="*" element={<Navigate to="/" replace />} />

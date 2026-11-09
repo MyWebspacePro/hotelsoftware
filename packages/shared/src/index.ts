@@ -8,3 +8,5 @@ export * from "./touristTax.js";
 export * from "./hpSplitting.js";
 export * from "./invoice.js";
 export * from "./fibu.js";
+export * from "./registration.js";
+export * from "./gdpr.js";

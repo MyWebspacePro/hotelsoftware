@@ -141,3 +141,56 @@ export interface AccountMappingView {
   format: "DATEV" | "GENERIC";
   mapping: { debtorAccount: string; accounts: Record<string, string> };
 }
+
+// ── Phase 3: Meldewesen & DSGVO ──────────────────────────────
+
+export interface RegistrationProfileView {
+  profile: {
+    country: string;
+    label: string;
+    foreignOnly: boolean;
+    requiredFields: string[];
+    retentionDays: number;
+    legalNote: string;
+  };
+  fieldLabels: Record<string, string>;
+  hotelCountry: string;
+}
+
+export interface RegistrationRecordView {
+  id: string;
+  reservationId: string;
+  guestId: string;
+  country: string;
+  fullName: string;
+  birthDate: string | null;
+  nationality: string | null;
+  idType: string | null;
+  idNumber: string | null;
+  address: string | null;
+  arrival: string;
+  departure: string;
+  status: "DRAFT" | "SUBMITTED";
+  foreignGuest: boolean;
+  retentionUntil: string;
+  anonymizedAt: string | null;
+  exportedAt: string | null;
+  guest: { id: string; email: string | null; phone: string | null } | null;
+  reservation: { id: string; adults: number; children: number } | null;
+}
+
+export interface RegistrationExportView {
+  id: string;
+  type: string;
+  periodFrom: string | null;
+  periodTo: string | null;
+  recordCount: number;
+  createdAt: string;
+}
+
+export interface RetentionRunView {
+  id: string;
+  executedAt: string;
+  registrationsAnonymized: number;
+  guestsAnonymized: number;
+}

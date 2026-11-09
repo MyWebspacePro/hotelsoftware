@@ -14,6 +14,8 @@ import { foliosRoutes } from "./modules/folios.routes.js";
 import { invoicesRoutes } from "./modules/invoices.routes.js";
 import { closingRoutes } from "./modules/closing.routes.js";
 import { fibuRoutes } from "./modules/fibu.routes.js";
+import { registrationsRoutes } from "./modules/registrations.routes.js";
+import { retentionRoutes } from "./modules/retention.routes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -51,6 +53,8 @@ export async function buildApp() {
   await app.register(invoicesRoutes, { prefix: "/api/invoices" });
   await app.register(closingRoutes, { prefix: "/api/closing" });
   await app.register(fibuRoutes, { prefix: "/api/fibu" });
+  await app.register(registrationsRoutes, { prefix: "/api/registrations" });
+  await app.register(retentionRoutes, { prefix: "/api/retention" });
 
   return app;
 }

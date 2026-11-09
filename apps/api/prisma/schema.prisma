@@ -60,6 +60,9 @@ model Hotel {
   dayClosings  DayClosing[]
   accountMappings AccountMapping[]
   touristTaxConfigs TouristTaxConfig[]
+  registrationRecords RegistrationRecord[]
+  registrationExports RegistrationExport[]
+  retentionRuns RetentionRun[]
 
   @@map("hotels")
 }
@@ -364,6 +367,81 @@ model TouristTaxConfig {
   @@map("tourist_tax_configs")
 }
 
+// ── Meldewesen & DSGVO (Phase 3) ─────────────────────────────
+
+enum RegistrationStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum RegistrationExportType {
+  DE_MELDESCHEIN_PDF
+  AT_GAESTEBLATT_CSV
+  AT_STATISTIK_MONAT_CSV
+  CH_CANTON_CSV
+}
+
+model RegistrationRecord {
+  id             String             @id @default(cuid())
+  hotelId        String
+  hotel          Hotel              @relation(fields: [hotelId], references: [id])
+  reservationId  String
+  reservation    Reservation        @relation(fields: [reservationId], references: [id])
+  guestId        String
+  guest          Guest              @relation(fields: [guestId], references: [id])
+  country        Country
+  fullName       String
+  birthDate      DateTime?          @db.Date
+  nationality    String?
+  idType         String?
+  idNumber       String?
+  address        String?
+  arrival        DateTime           @db.Date
+  departure      DateTime           @db.Date
+  status         RegistrationStatus @default(DRAFT)
+  foreignGuest   Boolean            @default(false)
+  retentionUntil DateTime           @db.Date
+  anonymizedAt   DateTime?
+  exportedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([reservationId, guestId])
+  @@index([hotelId, status])
+  @@index([hotelId, retentionUntil])
+  @@map("registration_records")
+}
+
+model RegistrationExport {
+  id          String                 @id @default(cuid())
+  hotelId     String
+  hotel       Hotel                  @relation(fields: [hotelId], references: [id])
+  type        RegistrationExportType
+  periodFrom  DateTime?              @db.Date
+  periodTo    DateTime?              @db.Date
+  recordCount Int                    @default(0)
+  generatedById String?
+  createdAt   DateTime               @default(now())
+
+  @@index([hotelId, type])
+  @@map("registration_exports")
+}
+
+model RetentionRun {
+  id              String   @id @default(cuid())
+  hotelId         String
+  hotel           Hotel    @relation(fields: [hotelId], references: [id])
+  executedAt      DateTime @default(now())
+  executedById    String?
+  registrationsAnonymized Int @default(0)
+  guestsAnonymized        Int @default(0)
+  details         Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  @@index([hotelId, executedAt])
+  @@map("retention_runs")
+}
+
 model RoomType {
   id            String        @id @default(cuid())
   hotelId       String
@@ -480,6 +558,7 @@ model Guest {
   notes            String?
   bookings         Booking[]
   invoices         Invoice[]
+  registrationRecords RegistrationRecord[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
@@ -531,6 +610,7 @@ model Reservation {
   pricePerNightCents  Int           @default(0)
   priceTotalCents     Int           @default(0)
   notes               String?
+  registrationRecords RegistrationRecord[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Guest } from "../api/types";
 
-const emptyForm = { firstName: "", lastName: "", email: "", phone: "", city: "", country: "" };
+const emptyForm = { firstName: "", lastName: "", email: "", phone: "", city: "", country: "", birthDate: "", nationality: "", idType: "", idNumber: "" };
 
 export function Gaeste() {
   const queryClient = useQueryClient();
@@ -37,7 +37,18 @@ export function Gaeste() {
       setError("Vor- und Nachname erforderlich");
       return;
     }
-    createMutation.mutate(form);
+    createMutation.mutate({
+      firstName: form.firstName,
+      lastName: form.lastName,
+      email: form.email,
+      phone: form.phone,
+      city: form.city,
+      country: form.country,
+      birthDate: form.birthDate || undefined,
+      nationality: form.nationality || undefined,
+      idType: form.idType || undefined,
+      idNumber: form.idNumber || undefined,
+    });
   }
 
   return (
@@ -57,19 +68,21 @@ export function Gaeste() {
       />
 
       {form && (
-        <div className="grid gap-2 rounded-xl bg-white p-4 shadow sm:grid-cols-3 lg:grid-cols-6">
-          {(["firstName", "lastName", "email", "phone", "city", "country"] as const).map((field) => (
+        <div className="grid gap-2 rounded-xl bg-white p-4 shadow sm:grid-cols-3 lg:grid-cols-10">
+          {(["firstName", "lastName", "email", "phone", "city", "country", "birthDate", "nationality", "idType", "idNumber"] as const).map((field) => (
             <input
               key={field}
-              placeholder={{ firstName: "Vorname", lastName: "Nachname", email: "E-Mail", phone: "Telefon", city: "Ort", country: "Land" }[field]}
+              type={field === "birthDate" ? "date" : "text"}
+              placeholder={{ firstName: "Vorname", lastName: "Nachname", email: "E-Mail", phone: "Telefon", city: "Ort", country: "Land", birthDate: "Geburtsdatum", nationality: "Staatsang. (IT…)", idType: "Ausweisart", idNumber: "Ausweisnr." }[field]}
               value={form[field]}
               onChange={(e) => setForm({ ...form, [field]: e.target.value })}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           ))}
-          <div className="flex gap-2 sm:col-span-3 lg:col-span-6">
+          <div className="flex gap-2 sm:col-span-3 lg:col-span-10">
             <button onClick={submit} disabled={createMutation.isPending} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">Speichern</button>
             <button onClick={() => { setForm(null); setError(null); }} className="rounded-md bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200">Abbrechen</button>
+            <span className="self-center text-xs text-slate-400">Meldewesen-Felder (ab Geburtsdatum) fließen automatisch in die Meldescheine ein</span>
           </div>
         </div>
       )}
