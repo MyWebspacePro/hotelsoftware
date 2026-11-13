@@ -31,7 +31,9 @@ export function signRefreshToken(user: TokenUser): string {
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
-  return jwt.verify(token, env.JWT_SECRET) as AccessTokenPayload;
+  const payload = jwt.verify(token, env.JWT_SECRET) as Partial<AccessTokenPayload>;
+  if (payload.type !== "access") throw new Error("Falscher Token-Typ");
+  return payload as AccessTokenPayload;
 }
 
 export function verifyRefreshToken(token: string): { id: string } {
@@ -44,13 +46,13 @@ export function verifyRefreshToken(token: string): { id: string } {
 export async function authenticate(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    void reply.code(401).send({ error: "Nicht eingeloggt" });
+    await reply.code(401).send({ error: "Nicht eingeloggt" });
     return;
   }
   try {
     req.user = verifyAccessToken(header.slice("Bearer ".length));
   } catch {
-    void reply.code(401).send({ error: "Sitzung abgelaufen — bitte neu einloggen" });
+    await reply.code(401).send({ error: "Sitzung abgelaufen — bitte neu einloggen" });
   }
 }
 
@@ -58,11 +60,11 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply): Pr
 export function requireRole(...roles: string[]) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     if (!req.user) {
-      void reply.code(401).send({ error: "Nicht eingeloggt" });
+      await reply.code(401).send({ error: "Nicht eingeloggt" });
       return;
     }
     if (!roles.includes(req.user.role)) {
-      void reply.code(403).send({ error: "Keine Berechtigung" });
+      await reply.code(403).send({ error: "Keine Berechtigung" });
     }
   };
 }

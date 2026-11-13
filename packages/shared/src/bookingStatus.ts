@@ -26,7 +26,7 @@ export function canTransition(from: BookingStatusValue, to: BookingStatusValue):
 }
 
 export function allowedTransitions(from: BookingStatusValue): BookingStatusValue[] {
-  return TRANSITIONS[from] ?? [];
+  return [...(TRANSITIONS[from] ?? [])];
 }
 
 export const STATUS_LABELS: Record<BookingStatusValue, string> = {
@@ -49,7 +49,7 @@ export const STATUS_COLORS: Record<BookingStatusValue, string> = {
   NO_SHOW: "#f97316",
 };
 
-/** Status, die als "belegt" im Haus gelten (durchgängig pro Nacht). */
+/** Status, die aktuell als "belegt" im Haus gelten (Check-out ist Vergangenheit). */
 export function isOccupied(status: BookingStatusValue): boolean {
-  return status === "CHECKED_IN" || status === "CHECKED_OUT" || status === "CONFIRMED";
+  return status === "CHECKED_IN" || status === "CONFIRMED";
 }

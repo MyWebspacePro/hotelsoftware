@@ -1,8 +1,9 @@
-import { roundHalfUp } from "./money.js";
+import { roundHalfUp, roundMoneyCents, type Currency } from "./money.js";
 
 /**
  * Rechnungssummen: mehrwertsteuerliche Gruppierung nach Steuerschlüssel
  * (mehrere Sätze pro Rechnung), Netto/Steuer/Brutto je Bucket + Summen.
+ * CHF wird gemäß DATENMODELL auf das 0,05-Raster gerundet.
  */
 export type TaxCategoryValue = "LOGIS" | "FOOD" | "OTHER";
 
@@ -36,13 +37,20 @@ export interface InvoiceTotals {
   grossCents: number;
 }
 
-export function invoiceTotals(lines: InvoiceLineInput[]): InvoiceTotals {
-  const withTotals = lines.map((l) => ({ ...l, totalCents: l.qty * l.unitPriceCents }));
+export interface InvoiceConfig {
+  currency?: Currency;
+}
+
+export function invoiceTotals(lines: InvoiceLineInput[], config: InvoiceConfig = {}): InvoiceTotals {
+  const currency = config.currency ?? "EUR";
+  const withTotals = lines.map((l) => ({ ...l, totalCents: Math.round(l.qty * l.unitPriceCents) }));
   const map = new Map<string, TaxBucket>();
   for (const line of withTotals) {
-    const key = line.taxRateKey;
+    // Gleicher Steuerschlüssel mit abweichender Rate/Kategorie darf nicht
+    // still in einen Bucket fallen — der vollständige Kontext ist Teil des Keys.
+    const key = `${line.taxRateKey}|${line.taxRate}|${line.taxCategory}|${line.isTouristTax ? "T" : "-"}`;
     const bucket = map.get(key) ?? {
-      taxRateKey: key,
+      taxRateKey: line.taxRateKey,
       taxRate: line.taxRate,
       taxCategory: line.taxCategory,
       netCents: 0,
@@ -55,7 +63,13 @@ export function invoiceTotals(lines: InvoiceLineInput[]): InvoiceTotals {
   }
   const buckets = [...map.values()].map((b) => {
     b.taxCents = roundHalfUp(b.netCents * b.taxRate, 0);
-    b.grossCents = b.netCents + b.taxCents;
+    if (currency === "CHF") {
+      // Brutto auf 5-Rappen; Steuer ist die Differenz, damit Netto + Steuer = Brutto.
+      b.grossCents = roundMoneyCents(b.netCents + b.taxCents, "CHF");
+      b.taxCents = b.grossCents - b.netCents;
+    } else {
+      b.grossCents = b.netCents + b.taxCents;
+    }
     return b;
   });
   const netCents = buckets.reduce((s, b) => s + b.netCents, 0);

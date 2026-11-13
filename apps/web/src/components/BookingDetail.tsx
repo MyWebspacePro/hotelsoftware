@@ -347,7 +347,7 @@ export function BookingDetail({ booking, onClose }: Props) {
         )}
         {invoice && !pdfUrl && (
           <button onClick={() => openPdf(invoice.id)} className="mt-3 rounded-md bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700">
-            Rechnung {invoice.number} als PDF öffnen ({eur(invoice.grossCents)})
+            Rechnung {invoice.number} als PDF öffnen ({eur(invoice.grossCents, invoice.currency)})
           </button>
         )}
       </div>

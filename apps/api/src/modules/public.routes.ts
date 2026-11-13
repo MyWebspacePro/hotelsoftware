@@ -4,10 +4,12 @@ import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { allowRequest } from "../lib/ratelimit.js";
 import {
+  availabilityForStay,
   buildIcalCalendar,
   nightsBetween,
   priceForStay,
   todayIso,
+  type BlockLike,
   type ReservationLike,
 } from "@hg/shared";
 
@@ -82,7 +84,7 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
     if (!hotel) return reply.code(404).send({ error: "Hotel nicht gefunden" });
     const hotelId = hotel.id;
 
-    const [roomTypes, rooms, blocking, rules] = await Promise.all([
+    const [roomTypes, rooms, blocking, rules, icalEvents] = await Promise.all([
       prisma.roomType.findMany({ where: { hotelId, deletedAt: null }, orderBy: { name: "asc" } }),
       prisma.room.findMany({ where: { hotelId, deletedAt: null }, select: { roomTypeId: true } }),
       prisma.reservation.findMany({
@@ -93,6 +95,14 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
         select: { roomTypeId: true, dateFrom: true, dateTo: true, status: true },
       }),
       prisma.priceRule.findMany({ where: { hotelId, deletedAt: null } }),
+      prisma.icalEvent.findMany({
+        where: {
+          dateFrom: { lt: isoToDate(dateTo) },
+          dateTo: { gt: isoToDate(dateFrom) },
+          connection: { hotelId, active: true, roomTypeId: { not: null } },
+        },
+        select: { dateFrom: true, dateTo: true, connection: { select: { roomTypeId: true } } },
+      }),
     ]);
 
     const resLike: ReservationLike[] = blocking.map((r) => ({
@@ -101,6 +111,11 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
       dateTo: dateToIso(r.dateTo),
       status: r.status,
     }));
+    const blocks: BlockLike[] = icalEvents.map((e) => ({
+      roomTypeId: e.connection.roomTypeId!,
+      dateFrom: dateToIso(e.dateFrom),
+      dateTo: dateToIso(e.dateTo),
+    }));
     const roomCounts: Record<string, number> = {};
     for (const r of rooms) roomCounts[r.roomTypeId] = (roomCounts[r.roomTypeId] ?? 0) + 1;
 
@@ -108,8 +123,7 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
     const results = [];
     for (const rt of roomTypes) {
       const total = roomCounts[rt.id] ?? 0;
-      const blocked = resLike.filter((r) => r.roomTypeId === rt.id).length;
-      const available = Math.max(0, total - blocked);
+      const avail = availabilityForStay(resLike, rt.id, total, dateFrom, dateTo, blocks);
       const fitsGuests = rt.capacity + rt.maxExtraBeds >= guestCount;
       const price = priceForStay(
         dateFrom,
@@ -126,9 +140,9 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
         capacity: rt.capacity,
         maxExtraBeds: rt.maxExtraBeds,
         fitsGuests,
-        available,
+        available: Math.max(0, avail.availableForStay),
         totalRooms: total,
-        availableForStay: fitsGuests ? available : 0,
+        availableForStay: avail.availableForStay,
         nights: price.nights,
         suggestedTotalCents: price.totalCents,
         suggestedPerNightCents: price.nights ? Math.round(price.totalCents / price.nights) : 0,
@@ -165,15 +179,34 @@ export async function publicRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!roomType) return reply.code(404).send({ error: "Zimmertyp nicht gefunden" });
 
-    // Verfügbarkeit hart prüfen (INQUIRY blockiert zwar nicht, aber voll = voll)
-    const blocked = await prisma.reservation.count({
-      where: {
-        hotelId, deletedAt: null, roomTypeId: roomType.id, status: { in: [...BLOCKING] },
-        dateFrom: { lt: isoToDate(body.dateTo) }, dateTo: { gt: isoToDate(body.dateFrom) },
-      },
-    });
-    const total = await prisma.room.count({ where: { hotelId, roomTypeId: roomType.id, deletedAt: null } });
-    if (blocked >= total) {
+    // Verfügbarkeit hart prüfen — pro Nacht, inkl. iCal-Sperren.
+    const [blockingRes, total, icalBlocks] = await Promise.all([
+      prisma.reservation.findMany({
+        where: {
+          hotelId, deletedAt: null, roomTypeId: roomType.id, status: { in: [...BLOCKING] },
+          dateFrom: { lt: isoToDate(body.dateTo) }, dateTo: { gt: isoToDate(body.dateFrom) },
+        },
+        select: { roomTypeId: true, dateFrom: true, dateTo: true, status: true },
+      }),
+      prisma.room.count({ where: { hotelId, roomTypeId: roomType.id, deletedAt: null } }),
+      prisma.icalEvent.findMany({
+        where: {
+          dateFrom: { lt: isoToDate(body.dateTo) },
+          dateTo: { gt: isoToDate(body.dateFrom) },
+          connection: { hotelId, active: true, roomTypeId: roomType.id },
+        },
+        select: { dateFrom: true, dateTo: true },
+      }),
+    ]);
+    const avail = availabilityForStay(
+      blockingRes.map((r) => ({ roomTypeId: r.roomTypeId, dateFrom: dateToIso(r.dateFrom), dateTo: dateToIso(r.dateTo), status: r.status })),
+      roomType.id,
+      total,
+      body.dateFrom,
+      body.dateTo,
+      icalBlocks.map((b) => ({ roomTypeId: roomType.id, dateFrom: dateToIso(b.dateFrom), dateTo: dateToIso(b.dateTo) })),
+    );
+    if (avail.availableForStay < 1) {
       return reply.code(409).send({ error: "Dieser Zimmertyp ist im gewählten Zeitraum leider ausgebucht" });
     }
 

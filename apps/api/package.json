@@ -11,7 +11,8 @@
     "db:push": "sh -c 'set -a; test -f ../../.env && . ../../.env; set +a; prisma db push'",
     "db:seed": "tsx --env-file=../../.env prisma/seed.ts",
     "db:seed:demo": "tsx --env-file=../../.env prisma/seed-demo.ts",
-    "db:studio": "sh -c 'set -a; test -f ../../.env && . ../../.env; set +a; prisma studio'"
+    "db:studio": "sh -c 'set -a; test -f ../../.env && . ../../.env; set +a; prisma studio'",
+    "db:migrate": "sh -c 'set -a; test -f ../../.env && . ../../.env; set +a; prisma migrate deploy'"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -11,6 +11,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ:-Europe/Vienna}
     volumes:
       - hs_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,6 +35,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       NODE_ENV: production
+      TZ: ${TZ:-Europe/Vienna}
+      TRUST_PROXY: "true"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   web:
     build:
@@ -41,6 +50,8 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: hs-web
     restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Vienna}
     depends_on:
       - api
     # bewusst keine Host-Ports — Routing über Traefik (siehe vps-tls)

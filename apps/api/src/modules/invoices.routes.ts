@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/auth.js";
@@ -9,10 +10,12 @@ import { invoiceTotals, type InvoiceLineInput } from "@hg/shared";
 
 const dateToIso = (d: Date) => d.toISOString().slice(0, 10);
 
-async function nextInvoiceNumber(hotelId: string, prefix: string): Promise<{ number: string; series: string }> {
-  const hotel = await prisma.hotel.findFirstOrThrow({ where: { id: hotelId } });
-  const year = new Date().getUTCFullYear();
-  const row = await prisma.invoiceSeries.upsert({
+type TxClient = Prisma.TransactionClient;
+
+async function nextInvoiceNumber(tx: TxClient, hotelId: string, prefix: string): Promise<{ number: string; series: string }> {
+  const hotel = await tx.hotel.findFirstOrThrow({ where: { id: hotelId } });
+  const year = new Date().getFullYear();
+  const row = await tx.invoiceSeries.upsert({
     where: { hotelId_country_year: { hotelId, country: hotel.country, year } },
     update: { nextNumber: { increment: 1 } },
     create: { hotelId, country: hotel.country, year, prefix, nextNumber: 2 },
@@ -191,11 +194,14 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
       taxCategory: e.taxCategory as "LOGIS" | "FOOD" | "OTHER",
       isTouristTax: e.isTouristTax,
     }));
-    const totals = invoiceTotals(lines);
+    const hotel = await prisma.hotel.findFirstOrThrow({ where: { id: hotelId } });
+    const totals = invoiceTotals(lines, { currency: hotel.currency as "EUR" | "CHF" });
 
-    const { number, series } = await nextInvoiceNumber(hotelId, "RE");
+    let number = "";
+    let series = "";
     const guest = folio.booking?.guest ?? null;
     const invoice = await prisma.$transaction(async (tx) => {
+      ({ number, series } = await nextInvoiceNumber(tx, hotelId, "RE"));
       const created = await tx.invoice.create({
         data: {
           hotelId,
@@ -207,7 +213,7 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
           folioId: folio.id,
           guestId: guest?.id,
           guestName: guest ? `${guest.firstName} ${guest.lastName}` : folio.title,
-          currency: (await prisma.hotel.findFirstOrThrow({ where: { id: hotelId } })).currency,
+          currency: hotel.currency,
           date: new Date(),
           netCents: totals.netCents,
           taxCents: totals.taxCents,
@@ -259,6 +265,7 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
       .parse(req.body);
     const booking = await prisma.booking.findFirst({ where: { id: body.bookingId, hotelId, deletedAt: null }, include: { guest: true, reservations: { where: { deletedAt: null } } } });
     if (!booking) return reply.code(404).send({ error: "Buchung nicht gefunden" });
+    const hotel = await prisma.hotel.findFirstOrThrow({ where: { id: hotelId } });
 
     const { ensureFolio } = await import("../lib/postings.js");
     const folio = await ensureFolio(hotelId, booking.id);
@@ -272,10 +279,12 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
       taxRateKey: rates.logis.key,
       taxCategory: "LOGIS",
     };
-    const totals = invoiceTotals([line]);
-    const { number, series } = await nextInvoiceNumber(hotelId, "AN");
+    const totals = invoiceTotals([line], { currency: hotel.currency as "EUR" | "CHF" });
 
+    let number = "";
+    let series = "";
     const invoice = await prisma.$transaction(async (tx) => {
+      ({ number, series } = await nextInvoiceNumber(tx, hotelId, "AN"));
       const created = await tx.invoice.create({
         data: {
           hotelId,
@@ -287,7 +296,7 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
           folioId: folio.id,
           guestId: booking.guestId,
           guestName: booking.guest ? `${booking.guest.firstName} ${booking.guest.lastName}` : null,
-          currency: (await tx.hotel.findFirstOrThrow({ where: { id: hotelId } })).currency,
+          currency: hotel.currency,
           date: new Date(),
           netCents: totals.netCents,
           taxCents: totals.taxCents,
@@ -325,15 +334,24 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
     if (!original) return reply.code(404).send({ error: "Rechnung nicht gefunden" });
     if (original.status === "CANCELLED") return reply.code(400).send({ error: "Rechnung ist bereits storniert" });
 
-    const { number, series } = await nextInvoiceNumber(hotelId, "ST");
+    const paidAgg = await prisma.payment.aggregate({
+      where: { invoiceId: original.id, deletedAt: null },
+      _sum: { amountCents: true },
+    });
+    const refundCents = paidAgg._sum.amountCents ?? 0;
+
+    let number = "";
+    let series = "";
     const credit = await prisma.$transaction(async (tx) => {
+      ({ number, series } = await nextInvoiceNumber(tx, hotelId, "ST"));
       const created = await tx.invoice.create({
         data: {
           hotelId,
           number,
           series,
           type: "CREDIT",
-          status: "PAID",
+          // Nur "bezahlt", wenn die zugehörige Rückerstattung vollständig erfasst ist.
+          status: refundCents <= 0 ? "ISSUED" : Math.abs(refundCents) >= Math.abs(original.grossCents) ? "PAID" : "PARTIALLY_PAID",
           bookingId: original.bookingId,
           folioId: original.folioId,
           guestId: original.guestId,
@@ -363,6 +381,22 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
           cancelOfId: original.id,
         },
       });
+      if (refundCents > 0) {
+        // Negative Zahlung = Rückerstattung; hält Kassenbuch und Summen konsistent.
+        await tx.payment.create({
+          data: {
+            hotelId,
+            folioId: original.folioId,
+            invoiceId: created.id,
+            method: "TRANSFER",
+            amountCents: -refundCents,
+            date: new Date(),
+            reference: `Rückerstattung ${original.number}`,
+            note: "Rückerstattung aus Storno",
+            createdById: req.user!.id,
+          },
+        });
+      }
       await tx.invoice.update({ where: { id: original.id }, data: { status: "CANCELLED" } });
       return tx.invoice.findFirstOrThrow({ where: { id: created.id }, include: invoiceInclude });
     });
@@ -376,11 +410,14 @@ export async function invoicesRoutes(app: FastifyInstance): Promise<void> {
     const hotelId = req.user!.hotelId!;
     const body = z.object({
       method: z.enum(["CASH", "CARD", "SEPA", "ONLINE", "VOUCHER", "TRANSFER"]),
-      amountCents: z.number().int(),
+      amountCents: z.number().int().min(1),
       reference: z.string().optional(),
     }).parse(req.body);
     const invoice = await prisma.invoice.findFirst({ where: { id, hotelId, deletedAt: null } });
     if (!invoice) return reply.code(404).send({ error: "Rechnung nicht gefunden" });
+    if (invoice.type === "CREDIT") {
+      return reply.code(400).send({ error: `Zahlungen auf Gutschriften bitte als negative Zahlung erfassen (Storno ${invoice.number})` });
+    }
     const payment = await prisma.$transaction(async (tx) => {
       const p = await tx.payment.create({
         data: { hotelId, folioId: invoice.folioId, invoiceId: invoice.id, method: body.method, amountCents: body.amountCents, date: new Date(), reference: body.reference, createdById: req.user!.id },

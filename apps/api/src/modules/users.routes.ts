@@ -71,7 +71,8 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
   app.patch("/:id", { preHandler: requireRole("ADMIN") }, async (req, reply) => {
     const body = updateSchema.parse(req.body);
     const id = (req.params as { id: string }).id;
-    const before = await prisma.user.findFirst({ where: { id, deletedAt: null } });
+    const hotelId = req.user!.hotelId;
+    const before = await prisma.user.findFirst({ where: { id, hotelId, deletedAt: null } });
     if (!before) {
       return reply.code(404).send({ error: "Benutzer nicht gefunden" });
     }
@@ -97,7 +98,7 @@ export async function usersRoutes(app: FastifyInstance): Promise<void> {
     if (id === req.user!.id) {
       return reply.code(400).send({ error: "Man kann sich nicht selbst löschen" });
     }
-    const before = await prisma.user.findFirst({ where: { id, deletedAt: null } });
+    const before = await prisma.user.findFirst({ where: { id, hotelId: req.user!.hotelId, deletedAt: null } });
     if (!before) {
       return reply.code(404).send({ error: "Benutzer nicht gefunden" });
     }

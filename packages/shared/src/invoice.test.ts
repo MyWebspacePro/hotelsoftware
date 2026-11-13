@@ -8,7 +8,7 @@ const lines: InvoiceLineInput[] = [
   { text: "Kurtaxe", qty: 6, unitPriceCents: 300, taxRate: 0, taxRateKey: "TAX", taxCategory: "OTHER", isTouristTax: true },
 ];
 
-describe("invoiceTotals", () => {
+describe("invoiceTotals (EUR)", () => {
   const t = invoiceTotals(lines);
 
   it("Buckets nach Steuerschlüssel gruppiert", () => {
@@ -33,5 +33,39 @@ describe("invoiceTotals", () => {
 
   it("Zeilen mit Einzelsummen", () => {
     expect(t.lines[2].totalCents).toBe(950);
+  });
+});
+
+describe("invoiceTotals (CHF 0,05-Rundung)", () => {
+  it("brutto auf 5-Rappen, Steuer als Differenz", () => {
+    const t = invoiceTotals(
+      [{ text: "Logis", qty: 1, unitPriceCents: 10000, taxRate: 0.038, taxRateKey: "CH_LOGIS_38", taxCategory: "LOGIS" }],
+      { currency: "CHF" },
+    );
+    expect(t.netCents).toBe(10000);
+    expect(t.grossCents % 5).toBe(0);
+    expect(t.grossCents).toBe(10380); // 103,80 € exakt
+    expect(t.grossCents).toBe(t.netCents + t.taxCents);
+  });
+
+  it("rundet 1.234 Rappen-Korrektur auf 5er", () => {
+    const t = invoiceTotals(
+      [{ text: "Bar", qty: 3, unitPriceCents: 333, taxRate: 0.081, taxRateKey: "CH_GASTRO_81", taxCategory: "FOOD" }],
+      { currency: "CHF" },
+    );
+    expect(t.grossCents % 5).toBe(0);
+    expect(t.grossCents).toBe(t.netCents + t.taxCents);
+  });
+});
+
+describe("invoiceTotals Bucket-Trennung", () => {
+  it("gleicher Key mit anderer Rate wird nicht vermischt", () => {
+    const t = invoiceTotals([
+      { text: "a", qty: 1, unitPriceCents: 10000, taxRate: 0.07, taxRateKey: "X", taxCategory: "LOGIS" },
+      { text: "b", qty: 1, unitPriceCents: 10000, taxRate: 0.19, taxRateKey: "X", taxCategory: "LOGIS" },
+    ]);
+    expect(t.buckets).toHaveLength(2);
+    expect(t.netCents).toBe(20000);
+    expect(t.taxCents).toBe(700 + 1900);
   });
 });

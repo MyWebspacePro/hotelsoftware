@@ -38,6 +38,22 @@ export interface TouristTaxResult {
   details: TouristTaxNightDetail[];
 }
 
+/**
+ * Bei überlappenden Saisons wird deterministisch die jüngste (späteste
+ * validFrom) gewählte — nicht die Reihenfolge im Array.
+ */
+function pickSeason(seasons: TouristTaxSeason[], night: string): TouristTaxSeason | null {
+  let winner: TouristTaxSeason | null = null;
+  for (const s of seasons) {
+    if (s.validFrom >= s.validTo) continue; // kaputte Konfiguration ignorieren
+    if (!(s.validFrom <= night && night < s.validTo)) continue;
+    if (!winner || s.validFrom > winner.validFrom || (s.validFrom === winner.validFrom && s.validTo > winner.validTo)) {
+      winner = s;
+    }
+  }
+  return winner;
+}
+
 export function computeTouristTax(
   seasons: TouristTaxSeason[],
   nights: string[],
@@ -47,7 +63,7 @@ export function computeTouristTax(
   let totalCents = 0;
 
   for (const night of nights) {
-    const season = seasons.find((s) => s.validFrom <= night && night < s.validTo);
+    const season = pickSeason(seasons, night);
     if (!season) {
       details.push({
         night,
@@ -68,7 +84,8 @@ export function computeTouristTax(
     let childrenFree = 0;
 
     for (const guest of guests) {
-      const isChild = guest.age !== null && guest.age <= season.childUntilAge;
+      const age = guest.age !== null && Number.isFinite(guest.age) ? guest.age : null;
+      const isChild = age !== null && age <= season.childUntilAge;
       if (isChild) {
         const cents = season.childCentsPerNight;
         subtotalCents += cents;
@@ -101,6 +118,7 @@ export function ageAtNight(birthDateIso: string | null | undefined, night: strin
   if (!birthDateIso) return null;
   const birth = parseIsoDate(birthDateIso);
   const n = parseIsoDate(night);
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(n.getTime())) return null;
   let age = n.getUTCFullYear() - birth.getUTCFullYear();
   const beforeBirthday =
     n.getUTCMonth() < birth.getUTCMonth() ||

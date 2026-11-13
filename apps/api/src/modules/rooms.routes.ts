@@ -105,6 +105,16 @@ export async function roomsRoutes(app: FastifyInstance): Promise<void> {
     const body = roomSchema.partial().parse(req.body);
     const room = await prisma.room.findFirst({ where: { id, hotelId: req.user!.hotelId!, deletedAt: null } });
     if (!room) return reply.code(404).send({ error: "Zimmer nicht gefunden" });
+    if (body.roomTypeId && body.roomTypeId !== room.roomTypeId) {
+      const rt = await prisma.roomType.findFirst({ where: { id: body.roomTypeId, hotelId: req.user!.hotelId!, deletedAt: null } });
+      if (!rt) return reply.code(400).send({ error: "Zimmertyp existiert nicht" });
+    }
+    if (body.number && body.number !== room.number) {
+      const duplicate = await prisma.room.findFirst({
+        where: { hotelId: req.user!.hotelId!, number: body.number, deletedAt: null, id: { not: room.id } },
+      });
+      if (duplicate) return reply.code(409).send({ error: `Zimmernummer ${body.number} existiert bereits` });
+    }
     const updated = await prisma.room.update({ where: { id }, data: body });
     await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "Room", entityId: id, action: "UPDATE", before: { number: room.number }, after: body });
     return reply.send(updated);

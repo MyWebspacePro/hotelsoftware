@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availabilityForStay, isBlocking, occupancyByDay, type ReservationLike } from "./availability.js";
+import { availabilityForStay, isBlocking, occupancyByDay, type BlockLike, type ReservationLike } from "./availability.js";
 
 const RT = "rt1";
 
@@ -22,6 +22,30 @@ describe("availabilityForStay", () => {
     expect(r.blockingCount).toBe(1);
   });
 
+  it("Teilbelegung blockiert nur die betroffene Nacht", () => {
+    const r = availabilityForStay(
+      [res("CONFIRMED", "2026-03-10", "2026-03-11")],
+      RT,
+      2,
+      "2026-03-10",
+      "2026-03-12",
+    );
+    expect(r.perNight["2026-03-10"]).toBe(1);
+    expect(r.perNight["2026-03-11"]).toBe(2);
+    expect(r.availableForStay).toBe(1);
+  });
+
+  it("Überbuchung wird nicht auf 0 geklemmt", () => {
+    const r = availabilityForStay(
+      [res("CONFIRMED", "2026-03-10", "2026-03-12"), res("CONFIRMED", "2026-03-10", "2026-03-12")],
+      RT,
+      1,
+      "2026-03-10",
+      "2026-03-12",
+    );
+    expect(r.availableForStay).toBe(-1);
+  });
+
   it("Checkout-Tag blockiert nicht den Folgetag (halboffen)", () => {
     const r = availabilityForStay([res("CONFIRMED", "2026-03-10", "2026-03-12")], RT, 1, "2026-03-12", "2026-03-13");
     expect(r.availableForStay).toBe(1);
@@ -38,6 +62,12 @@ describe("availabilityForStay", () => {
     );
     expect(r.availableForStay).toBe(1);
     expect(r.blockingCount).toBe(0);
+  });
+
+  it("iCal-Blöcke zählen als eine Einheit", () => {
+    const blocks: BlockLike[] = [{ roomTypeId: RT, dateFrom: "2026-03-10", dateTo: "2026-03-12" }];
+    const r = availabilityForStay([], RT, 1, "2026-03-10", "2026-03-12", blocks);
+    expect(r.availableForStay).toBe(0);
   });
 
   it("Minimum über Nächte: Engpass bestimmt availableForStay", () => {

@@ -9,7 +9,8 @@ import {
   verifyRefreshToken,
   type TokenUser,
 } from "../lib/auth.js";
-import { safeSnapshot, writeAudit } from "../lib/audit.js";
+import { writeAudit } from "../lib/audit.js";
+import { allowRequest } from "../lib/ratelimit.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -22,10 +23,11 @@ const loginSchema = z.object({
  */
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_FAILED_ATTEMPTS = 10;
+const MAX_FAILED_PER_IP = 30;
 const BLOCK_MS = 15 * 60 * 1000;
 
 function clientKey(req: { ip?: string; body?: unknown }): string {
-  const email = ((req.body as { email?: string })?.email ?? "").toLowerCase();
+  const email = ((req.body as { email?: string })?.email ?? "").trim().toLowerCase();
   return `${req.ip ?? "unknown"}|${email}`;
 }
 
@@ -38,6 +40,11 @@ function checkRateLimit(key: string): boolean {
 }
 
 function recordFailedLogin(key: string): void {
+  if (loginAttempts.size > 5_000) {
+    for (const [k, v] of loginAttempts) {
+      if (v.blockedUntil <= Date.now()) loginAttempts.delete(k);
+    }
+  }
   const entry = loginAttempts.get(key) ?? { count: 0, blockedUntil: 0 };
   entry.count += 1;
   if (entry.count >= MAX_FAILED_ATTEMPTS) {
@@ -65,12 +72,16 @@ function toTokenUser(user: { id: string; email: string; role: string; hotelId: s
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/login", async (req, reply) => {
     const key = clientKey(req);
+    // Zwei Ebenen: grobe IP-Sperre + präzise IP+E-Mail-Sperre
+    if (!allowRequest(`login-ip|${req.ip ?? "unknown"}`, MAX_FAILED_PER_IP, BLOCK_MS)) {
+      return reply.code(429).send({ error: "Zu viele Fehlversuche — bitte in 15 Minuten erneut versuchen" });
+    }
     if (!checkRateLimit(key)) {
       return reply.code(429).send({ error: "Zu viele Fehlversuche — bitte in 15 Minuten erneut versuchen" });
     }
     const body = loginSchema.parse(req.body);
     const user = await prisma.user.findFirst({
-      where: { email: body.email, deletedAt: null },
+      where: { email: body.email.trim().toLowerCase(), deletedAt: null },
     });
     if (!user || !user.active) {
       recordFailedLogin(key);

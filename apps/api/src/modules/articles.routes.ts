@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import { writeAudit } from "../lib/audit.js";
+import { getCountryRates } from "../lib/postings.js";
 
 const articleSchema = z.object({
   name: z.string().min(1),
@@ -25,6 +26,10 @@ export async function articlesRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/", { preHandler: requireRole("ADMIN", "MANAGER") }, async (req, reply) => {
     const body = articleSchema.parse(req.body);
+    const { rates } = await getCountryRates(req.user!.hotelId!);
+    if (![rates.logis.key, rates.food.key, rates.other.key].includes(body.taxRateKey)) {
+      return reply.code(400).send({ error: `Unbekannter Steuerschlüssel: ${body.taxRateKey}` });
+    }
     const article = await prisma.article.create({ data: { ...body, hotelId: req.user!.hotelId! } });
     await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "Article", entityId: article.id, action: "CREATE", after: body });
     return reply.code(201).send(article);
@@ -35,6 +40,12 @@ export async function articlesRoutes(app: FastifyInstance): Promise<void> {
     const body = articleSchema.partial().parse(req.body);
     const article = await prisma.article.findFirst({ where: { id, hotelId: req.user!.hotelId!, deletedAt: null } });
     if (!article) return reply.code(404).send({ error: "Artikel nicht gefunden" });
+    if (body.taxRateKey) {
+      const { rates } = await getCountryRates(req.user!.hotelId!);
+      if (![rates.logis.key, rates.food.key, rates.other.key].includes(body.taxRateKey)) {
+        return reply.code(400).send({ error: `Unbekannter Steuerschlüssel: ${body.taxRateKey}` });
+      }
+    }
     const updated = await prisma.article.update({ where: { id }, data: body });
     await writeAudit({ hotelId: req.user!.hotelId, userId: req.user!.id, entity: "Article", entityId: id, action: "UPDATE", after: body });
     return reply.send(updated);

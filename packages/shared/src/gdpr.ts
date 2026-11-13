@@ -35,11 +35,15 @@ export interface AnonymizedGuestFields {
   notes: string;
 }
 
-/** Ersetzt personenbezogene Felder — Datensatz bleibt für Statistik/Archiv erhalten. */
-export function anonymizedGuestFields(reference: string): AnonymizedGuestFields {
+/**
+ * Ersetzt personenbezogene Felder vollständig — Datensatz bleibt für Statistik/
+ * Archiv erhalten. Es wird KEINE Referenz/ID in ein Namensfeld geschrieben, da
+ * der Datensatz sonst pseudonym und nicht anonym ist.
+ */
+export function anonymizedGuestFields(): AnonymizedGuestFields {
   return {
     firstName: "Anonymisiert",
-    lastName: `Gast-${reference}`,
+    lastName: "Anonymisiert",
     email: "",
     phone: "",
     address: "",
@@ -72,12 +76,15 @@ export interface RetentionDecisionInput {
   hasActiveOrFutureStay: boolean;
   retentionDays: number;
   todayIso: string;
+  /** ISO der Profilerstellung — relevant für Gäste ohne Aufenthalt. */
+  createdIso?: string | null;
 }
 
 /** Gästeprofil anonymisieren, wenn Frist abgelaufen und keine künftigen Aufenthalte. */
 export function shouldAnonymizeGuest(input: RetentionDecisionInput): boolean {
   if (input.hasActiveOrFutureStay) return false;
-  if (!input.lastDeparture) return false;
+  const reference = input.lastDeparture ?? input.createdIso ?? null;
+  if (!reference) return false;
   const cutoff = new Date(`${input.todayIso}T00:00:00.000Z`).getTime() - input.retentionDays * 86400000;
-  return new Date(`${input.lastDeparture}T00:00:00.000Z`).getTime() < cutoff;
+  return new Date(`${reference}T00:00:00.000Z`).getTime() <= cutoff;
 }

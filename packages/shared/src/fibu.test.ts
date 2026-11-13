@@ -36,12 +36,22 @@ describe("buildDatevCsv", () => {
   });
 
   it("Logis auf Erlöskonto 6200, Kurtaxe auf 6600, Debitor 10000", () => {
-    expect(csv).toContain("10000;6200;396,00");
-    expect(csv).toContain("10000;6600;15,00");
+    expect(csv).toContain('"10000";"6200";"396,00"');
+    expect(csv).toContain('"10000";"6600";"15,00"');
   });
 
   it("Steuer-Kurzform enthält Prozent", () => {
-    expect(csv).toContain("10USt");
+    expect(csv).toContain('"10USt"');
+  });
+
+  it("escapt Semikolon/Quote/CRLF in Freitextfeldern", () => {
+    const tricky: FibuBucketRow = { ...rows[0], invoiceNumber: 'RE;1"2', text: "Zeile1\nZeile2; x" };
+    const out = buildDatevCsv([tricky]);
+    const dataLine = out.trim().split("\r\n")[1];
+    // Belegfeld enthält verdoppelte Quotes und Semikolon; Text ohne echte Umbrüche
+    expect(dataLine).toContain('"RE;1""2"');
+    expect(dataLine).toContain("Zeile1 Zeile2; x");
+    expect(dataLine.split("\r\n")).toHaveLength(1);
   });
 });
 
@@ -49,10 +59,10 @@ describe("buildGenericCsv", () => {
   const csv = buildGenericCsv(rows, DEFAULT_MAPPING_GENERIC);
 
   it("Netto/Steuer/Brutto je Bucket + Kategorie-Spalte", () => {
-    expect(csv).toContain("3000;LOGIS;360,00;36,00;396,00");
+    expect(csv).toContain('"3000";"LOGIS";"360,00";"36,00";"396,00"');
     expect(csv).toContain("TOURIST_TAX");
-    expect(csv).toContain("3300");
-    expect(csv).toContain("1100");
+    expect(csv).toContain('"3300"');
+    expect(csv).toContain('"1100"');
     expect(DEFAULT_MAPPING_GENERIC.accounts.LOGIS).toBe("3000");
   });
 });

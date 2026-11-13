@@ -42,8 +42,15 @@ function taxCode(rate: number): string {
   return `${String(pct).replace(".", ",")}USt`;
 }
 
+/** Ein CSV-Feld: CRLF raus (DATEV verträgt keine Umbrüche im Feld), Quote verdoppeln. */
 function csvEscape(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+  const clean = value.replace(/\r\n|\r|\n/g, " ").replace(/"/g, '""');
+  return `"${clean}"`;
+}
+
+/** Alle Freitextfelder (die in CSV landen) konsequent escapen. */
+function csvRow(values: string[]): string {
+  return values.map((v) => csvEscape(v)).join(";");
 }
 
 /** DATEV-Buchungsstapel (vereinfacht, semikolongetrennt, Euro/Beträge mit Komma). */
@@ -54,16 +61,16 @@ export function buildDatevCsv(rows: FibuBucketRow[], mapping: FibuMapping = DEFA
   for (const row of rows) {
     const amount = (row.grossCents / 100).toFixed(2).replace(".", ",");
     lines.push(
-      [
+      csvRow([
         row.date,
         row.invoiceNumber,
-        csvEscape(row.text),
+        row.text,
         mapping.debtorAccount,
         accountFor(mapping, row),
         amount,
         taxCode(row.taxRate),
         row.currency,
-      ].join(";"),
+      ]),
     );
   }
   return lines.join("\r\n") + "\r\n";
@@ -77,7 +84,7 @@ export function buildGenericCsv(rows: FibuBucketRow[], mapping: FibuMapping = DE
   for (const row of rows) {
     const f = (c: number) => (c / 100).toFixed(2).replace(".", ",");
     lines.push(
-      [
+      csvRow([
         row.date,
         row.invoiceNumber,
         mapping.debtorAccount,
@@ -87,8 +94,8 @@ export function buildGenericCsv(rows: FibuBucketRow[], mapping: FibuMapping = DE
         f(row.grossCents - row.netCents),
         f(row.grossCents),
         row.currency,
-        csvEscape(row.text),
-      ].join(";"),
+        row.text,
+      ]),
     );
   }
   return lines.join("\r\n") + "\r\n";

@@ -3,12 +3,13 @@ import { z } from "zod";
 import type { BookingStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/auth.js";
+import { todayInZone } from "../lib/time.js";
 import {
   addDays,
   availabilityOverview,
   nightsBetween,
   priceForStay,
-  todayIso,
+  type BlockLike,
   type ReservationLike,
 } from "@hg/shared";
 
@@ -91,7 +92,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     const hotelId = req.user!.hotelId!;
     if (dateFrom >= dateTo) return reply.code(400).send({ error: "dateTo muss nach dateFrom liegen" });
 
-    const [roomTypes, rooms, blocking, rules] = await Promise.all([
+    const [roomTypes, rooms, blocking, rules, icalEvents] = await Promise.all([
       prisma.roomType.findMany({ where: { hotelId, deletedAt: null }, orderBy: { name: "asc" } }),
       prisma.room.findMany({ where: { hotelId, deletedAt: null }, select: { roomTypeId: true } }),
       prisma.reservation.findMany({
@@ -99,6 +100,14 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         select: { roomTypeId: true, dateFrom: true, dateTo: true, status: true },
       }),
       prisma.priceRule.findMany({ where: { hotelId, deletedAt: null } }),
+      prisma.icalEvent.findMany({
+        where: {
+          dateFrom: { lt: isoToDate(dateTo) },
+          dateTo: { gt: isoToDate(dateFrom) },
+          connection: { hotelId, active: true, roomTypeId: { not: null } },
+        },
+        select: { dateFrom: true, dateTo: true, connection: { select: { roomTypeId: true } } },
+      }),
     ]);
 
     const resLike: ReservationLike[] = blocking.map((r) => ({
@@ -107,10 +116,15 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       dateTo: dateToIso(r.dateTo),
       status: r.status,
     }));
+    const blocks: BlockLike[] = icalEvents.map((e) => ({
+      roomTypeId: e.connection.roomTypeId!,
+      dateFrom: dateToIso(e.dateFrom),
+      dateTo: dateToIso(e.dateTo),
+    }));
     const roomCounts: Record<string, number> = {};
     for (const r of rooms) roomCounts[r.roomTypeId] = (roomCounts[r.roomTypeId] ?? 0) + 1;
 
-    const overview = availabilityOverview(resLike, roomTypes.map((rt) => ({ id: rt.id, capacity: rt.capacity })), roomCounts, dateFrom, dateTo);
+    const overview = availabilityOverview(resLike, roomTypes.map((rt) => ({ id: rt.id, capacity: rt.capacity })), roomCounts, dateFrom, dateTo, blocks);
 
     return roomTypes.map((rt) => {
       const avail = overview.find((o) => o.roomTypeId === rt.id)!;
@@ -142,13 +156,14 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
   /** Dashboard-Kennzahlen. */
   app.get("/dashboard", async (req) => {
     const hotelId = req.user!.hotelId!;
-    const today = todayIso();
+    const hotel = await prisma.hotel.findFirstOrThrow({ where: { id: hotelId }, select: { timezone: true } });
+    const today = todayInZone(hotel.timezone || "Europe/Vienna");
     const tomorrow = addDays(today, 1);
     const t0 = isoToDate(today);
     const t1 = isoToDate(tomorrow);
 
     const [arrivals, departures, inHouse, totalRooms, occupancyRows] = await Promise.all([
-      prisma.reservation.count({ where: { hotelId, deletedAt: null, dateFrom: t0, status: { in: ["CONFIRMED", "OFFERED"] } } }),
+      prisma.reservation.count({ where: { hotelId, deletedAt: null, dateFrom: t0, status: "CONFIRMED" } }),
       prisma.reservation.count({ where: { hotelId, deletedAt: null, dateTo: t0, status: { in: ["CHECKED_IN"] } } }),
       prisma.reservation.count({ where: { hotelId, deletedAt: null, status: "CHECKED_IN", dateFrom: { lt: t1 }, dateTo: { gt: t0 } } }),
       prisma.room.count({ where: { hotelId, deletedAt: null } }),

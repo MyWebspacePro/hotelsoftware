@@ -21,7 +21,8 @@ Demo-Benutzer (Rollen vorhanden): admin@ / manager@ / rezeption@ / housekeeping@
 
 ## Lokale Entwicklung
 - Ports bewusst abweichend vom Werkstattmanager: DB **5433**, Mailhog **1026/8026**
-- `npm install` → `docker compose up -d` → `npm run db:push` → `npm run db:seed` → `npm run db:seed:demo` → `npm run dev`
+- `npm install` → `docker compose up -d` → `npm run db:migrate` → `npm run db:seed` → `npm run db:seed:demo` → `npm run dev`
+- VPS: `npm run db:migrate` (auf einer bereits per `db push` angelegten DB zuerst `prisma migrate resolve --applied 0_init`)
 - Phase-1-Smoke (09.11.2026, lokal + VPS): Verfügbarkeits-/Kalender-/Dashboard-Endpunkte grün,
   Buchung per API angelegt (Zimmer-Zuweisung + Saisonpreis korrekt), SPA-Routen 200
 - Phase-2-Smoke (09.11.2026, lokal + VPS): Check-in → 21 Auto-Postings (HP-Splitting Logis/
@@ -83,7 +84,7 @@ Demo-Benutzer (Rollen vorhanden): admin@ / manager@ / rezeption@ / housekeeping@
   mit zukünftigen/laufenden Aufenthalten inkl. Zimmertyp-Filter; Token rotierbar, URL copy&paste
 - **Kanäle-Seite im Backoffice:** Verbindungsliste mit Sync-Buttons/Aktiv-Schalter/Token-Rotation,
   Konfliktübersicht mit Lösungshinweis, importierte Aufenthalte mit Status, Sync-Protokoll
-- **Shared:** ical-Engine mit 8 Unit-Tests (79 gesamt); Demo: 2 Kanäle mit selbst gelesenem
+- **Shared:** ical-Engine mit 12 Unit-Tests (111 gesamt); Demo: 2 Kanäle mit selbst gelesenem
   Demo-Feed (`/api/public/ical/demo-feed`)
 - Phase-5-Smoke (lokal + VPS): 15/15 — Anfrage→INQUIRY→OFFERED→CONFIRMED, Honeypot, Sync,
   Konflikt-Erkennung + Zurückziehen der Projektion, Export-Feed (12 VEVENTs), falscher Token→404
@@ -109,3 +110,24 @@ Details + Wiederherstellung: `VPS-UEBERGABE.md`. Scope/Architektur: `docs/SCOPE.
 Phase 6: Abnahme + End-to-End-Regression (Login→Reservierung→Check-in→Verzehr→Kurtaxe→Rechnung→
 Tagesabschluss→FiBu→Meldewesen) + finale Statistiken + Übergabe-Doku.
 Danach Stufe 2 (Backlog): fiskaltrust-RKSV, TSE, XRechnung/ZUGFeRD, Stripe-Terminal, Channel-ARI.
+
+
+## Code-Review & Fixes (13.11.2026)
+- iCal: Komponenten-Stack (VALARM überschreibt Event nicht mehr), `STATUS:CANCELLED` wird
+  entfernt, `DURATION`, UTF-8-Oktett-Faltung, robustes Unescape, Fallback-UID inkl. Summary
+- Preise: längste Regel gewinnt (Doku-Konform), Determinismus bei Gleichstand
+- CHF: 0,05-Rundung in `invoiceTotals` (Bucket-Brutto, Steuer als Differenz)
+- Verfügbarkeit: pro Nacht statt pauschal, keine 0-Clampung (Überbuchung sichtbar),
+  iCal-Blöcke, Doppelbelegung innerhalb eines Requests verhindert
+- Buchungen/Postings: atomarer Idempotenz-Claim (`Booking.stayPostedAt`) + Transaktion
+- Rechnungen: Nummerierung in der Transaktion, Storno bucht Rückerstattung, CHF-Währung
+- Auth/Tenant: `hotelId`-Filter in `users`, Zimmer/Mitarbeiter-Zuordnung geprüft,
+  Login-Rate-Limit per IP + IP/Mail, `trustProxy`, CORS optional, Fehler ohne Interna
+- SSRF-Schutz für iCal-Import-URLs, Krypto-Token für Export
+- Zeitzonen: Tagesabschluss/Dashboard in Hotel-Zeitzone (`Hotel.timezone`), Kalenderjahre
+  bei Meldefristen, Monatsfenster der AT-Statistik korrigiert
+- DSGVO: echte Anonymisierung (keine ID im Namen), Gäste ohne Aufenthalt, Auto-Lauf
+- FiBu-CSV: alle Felder escaped; Validierung von `limit`, Zahlungsbeträgen, Steuerschlüsseln
+- Infra: `.dockerignore`, API/Web als non-root + Healthchecks, Prisma-Baseline-Migration `0_init`
+- Tests: 111/111 grün; Web-Produktionsbuild erfolgreich
+- Bewusst unverändert: Demo-Zugangsdaten im Seed/UI (Passwort-Thema bleibt wie gewünscht)

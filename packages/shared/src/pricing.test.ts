@@ -31,13 +31,22 @@ describe("priceForStay", () => {
 
   it("spezifischere (längere) Regel gewinnt bei Überlappung", () => {
     const overlapping: PriceRuleLike[] = [
-      { id: "long", dateFrom: "2026-02-01", dateTo: "2026-03-01", priceCents: 10000 },
       { id: "short", dateFrom: "2026-02-10", dateTo: "2026-02-14", priceCents: 20000 },
+      { id: "long", dateFrom: "2026-02-01", dateTo: "2026-03-01", priceCents: 10000 },
     ];
     const r = priceForStay("2026-02-11", "2026-02-12", overlapping, 0);
-    expect(r.perNightCents["2026-02-11"]).toBe(20000);
+    expect(r.perNightCents["2026-02-11"]).toBe(10000);
     const r2 = priceForStay("2026-02-16", "2026-02-17", overlapping, 0);
     expect(r2.perNightCents["2026-02-16"]).toBe(10000);
+  });
+
+  it("bei gleich langen Regeln gewinnt der spätere Beginn", () => {
+    const overlapping: PriceRuleLike[] = [
+      { id: "a", dateFrom: "2026-02-01", dateTo: "2026-02-10", priceCents: 111 },
+      { id: "b", dateFrom: "2026-02-05", dateTo: "2026-02-14", priceCents: 222 },
+    ];
+    const r = priceForStay("2026-02-06", "2026-02-07", overlapping, 0);
+    expect(r.perNightCents["2026-02-06"]).toBe(222);
   });
 
   it("stopSell wird gezählt", () => {

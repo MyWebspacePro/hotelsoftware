@@ -47,10 +47,14 @@ export const COUNTRY_DEFAULTS: Record<CountryCode, CountryConfig> = {
       { key: "CH_LOGIS_38", label: "Beherbergung 3,8 %", rate: 0.038, category: "LOGIS" },
       { key: "CH_GASTRO_81", label: "Gastronomie 8,1 %", rate: 0.081, category: "FOOD" },
       { key: "CH_TAKEAWAY_26", label: "Take-away 2,6 %", rate: 0.026, category: "FOOD" },
+      // "Sonstiges" = Normalsatz, damit Leistungen nicht versehentlich 0 % werden.
+      { key: "CH_STD_81", label: "Normalsatz 8,1 % (Sonstiges)", rate: 0.081, category: "OTHER" },
     ],
   },
 };
 
+/** Kopie, damit Aufrufer die globalen Defaults nicht mutieren können. */
 export function countryDefaults(code: CountryCode): CountryConfig {
-  return COUNTRY_DEFAULTS[code];
+  const cfg = COUNTRY_DEFAULTS[code];
+  return { ...cfg, vatRates: cfg.vatRates.map((r) => ({ ...r })) };
 }

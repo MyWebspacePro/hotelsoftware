@@ -143,6 +143,8 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
     const statusList = status
       ? status.split(",").filter((s): s is BookingStatusValue => ["INQUIRY", "OFFERED", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "NO_SHOW"].includes(s))
       : undefined;
+    const limitRaw = Number((req.query as { limit?: string }).limit ?? 100);
+    const limitNum = Number.isFinite(limitRaw) ? Math.min(Math.max(1, Math.trunc(limitRaw)), 500) : 100;
     const bookings = await prisma.booking.findMany({
       where: {
         hotelId: req.user!.hotelId!,
@@ -163,7 +165,7 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
       },
       include: bookingInclude,
       orderBy: { createdAt: "desc" },
-      take: limit ? Number(limit) : 100,
+      take: limitNum,
     });
     return bookings;
   });
@@ -227,7 +229,18 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
     for (const r of body.reservations) {
       const p = await priceReservation(hotelId, r);
       if ("error" in p) return reply.code(400).send({ error: p.error });
-      const avail = availabilityForStay(existing, r.roomTypeId, roomCounts.get(r.roomTypeId) ?? 0, r.dateFrom, r.dateTo);
+      // Bereits in DIESEM Request akzeptierte Reservierungen mitzählen, sonst
+      // können zwei Reservierungen dasselbe Zimmer/dieselbe Kapazität doppelt belegen.
+      const accepted = priced.map((x) => ({
+        id: `pending-${x.input.roomTypeId}`,
+        roomTypeId: x.input.roomTypeId,
+        roomId: x.roomId,
+        dateFrom: x.input.dateFrom,
+        dateTo: x.input.dateTo,
+        status: "CONFIRMED" as const,
+        bookingId: null,
+      }));
+      const avail = availabilityForStay([...existing, ...accepted], r.roomTypeId, roomCounts.get(r.roomTypeId) ?? 0, r.dateFrom, r.dateTo);
       if (avail.availableForStay < 1 && !force) {
         errors.push(`${p.roomType.name} ${r.dateFrom}–${r.dateTo}: ausgebucht (${avail.availableForStay} frei) — force erzwingt Überbuchung`);
         continue;
@@ -237,6 +250,10 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
         continue;
       }
       if (r.adults + r.children < 1) errors.push("Personen fehlen");
+      if (r.adults + r.children > p.roomType.capacity + p.roomType.maxExtraBeds) {
+        errors.push(`${p.roomType.name}: ${r.adults + r.children} Personen über Kapazität`);
+        continue;
+      }
       if (p.minStayRequired > nightsBetween(r.dateFrom, r.dateTo)) {
         warnings.push(`Mindestaufenthalt ${p.minStayRequired} Nächte empfohlen (Saisonregel)`);
       }
@@ -245,12 +262,14 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
         findFreeRoom(
           allRooms,
           r.roomTypeId,
-          existing.map((e) => ({ roomId: e.roomId, dateFrom: e.dateFrom, dateTo: e.dateTo })),
+          [...existing, ...accepted].map((e) => ({ roomId: e.roomId, dateFrom: e.dateFrom, dateTo: e.dateTo })),
           r.dateFrom,
           r.dateTo,
         );
       if (r.roomId) {
-        const roomConflict = existing.some((e) => e.roomId === r.roomId && overlaps(r.dateFrom, r.dateTo, e.dateFrom, e.dateTo));
+        const roomConflict = [...existing, ...accepted].some(
+          (e) => e.roomId === r.roomId && overlaps(r.dateFrom, r.dateTo, e.dateFrom, e.dateTo),
+        );
         if (roomConflict && !force) {
           errors.push(`Zimmer bereits belegt im Zeitraum ${r.dateFrom}–${r.dateTo}`);
           continue;
@@ -358,9 +377,15 @@ export async function bookingsRoutes(app: FastifyInstance): Promise<void> {
     if (merged.dateFrom >= merged.dateTo) {
       return reply.code(400).send({ error: "dateTo muss nach dateFrom liegen" });
     }
+    if (merged.adults + merged.children < 1) {
+      return reply.code(400).send({ error: "Personen fehlen" });
+    }
 
     const p = await priceReservation(hotelId, merged as z.infer<typeof reservationInput>);
     if ("error" in p) return reply.code(400).send({ error: p.error });
+    if (merged.adults + merged.children > p.roomType.capacity + p.roomType.maxExtraBeds) {
+      return reply.code(400).send({ error: `${p.roomType.name}: über Kapazität` });
+    }
 
     const existing = await blockingReservations(hotelId, merged.dateFrom, merged.dateTo, resId);
     if (merged.roomId) {

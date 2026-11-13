@@ -10,6 +10,13 @@ export interface ReservationLike {
   status: string;
 }
 
+/** Externe Sperrung (z. B. iCal-Block des Portals) — belegt eine Einheit. */
+export interface BlockLike {
+  roomTypeId: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
 export interface RoomTypeLike {
   id: string;
   capacity: number;
@@ -18,7 +25,7 @@ export interface RoomTypeLike {
 export interface AvailabilityResult {
   roomTypeId: string;
   totalRooms: number;
-  /** Freie Einheiten je Nacht (ISO). */
+  /** Freie Einheiten je Nacht (ISO). Kann bei Überbuchung negativ sein. */
   perNight: Record<string, number>;
   /** Minimum über alle Nächte des Aufenthalts — die entscheidende Zahl. */
   availableForStay: number;
@@ -28,8 +35,8 @@ export interface AvailabilityResult {
 
 /**
  * Verfügbarkeit eines Zimmertyps für einen Aufenthaltszeitraum.
- * Belegung je Nacht = Anzahl blockierender Reservierungen dieses Typs, die die
- * Nacht abdecken; freie Einheiten = totalRooms − belegt.
+ * Belegung je Nacht = Reservierungen + externe Blöcke dieses Typs, die die
+ * Nacht abdecken; freie Einheiten = totalRooms − belegt (negativ = Überbuchung).
  */
 export function availabilityForStay(
   reservations: ReservationLike[],
@@ -37,6 +44,7 @@ export function availabilityForStay(
   totalRooms: number,
   dateFrom: string,
   dateTo: string,
+  blocks: BlockLike[] = [],
 ): AvailabilityResult {
   const nights = eachNight(dateFrom, dateTo);
   const perNight: Record<string, number> = {};
@@ -52,9 +60,15 @@ export function availabilityForStay(
     if (!overlaps(dateFrom, dateTo, res.dateFrom, res.dateTo)) continue;
     blockingCount += 1;
     for (const night of eachNight(res.dateFrom, res.dateTo)) {
-      if (night in perNight) {
-        perNight[night] = Math.max(0, perNight[night] - 1);
-      }
+      if (night in perNight) perNight[night] -= 1;
+    }
+  }
+
+  for (const block of blocks) {
+    if (block.roomTypeId !== roomTypeId) continue;
+    if (!overlaps(dateFrom, dateTo, block.dateFrom, block.dateTo)) continue;
+    for (const night of eachNight(block.dateFrom, block.dateTo)) {
+      if (night in perNight) perNight[night] -= 1;
     }
   }
 
@@ -72,9 +86,10 @@ export function availabilityOverview(
   roomCounts: Record<string, number>,
   dateFrom: string,
   dateTo: string,
+  blocks: BlockLike[] = [],
 ): AvailabilityResult[] {
   return roomTypes.map((rt) =>
-    availabilityForStay(reservations, rt.id, roomCounts[rt.id] ?? 0, dateFrom, dateTo),
+    availabilityForStay(reservations, rt.id, roomCounts[rt.id] ?? 0, dateFrom, dateTo, blocks),
   );
 }
 
@@ -88,6 +103,7 @@ export function occupancyByDay(
   roomTypeId: string,
   from: string,
   to: string,
+  blocks: BlockLike[] = [],
 ): Record<string, number> {
   const out: Record<string, number> = {};
   let cursor = from;
@@ -98,6 +114,12 @@ export function occupancyByDay(
   for (const res of reservations) {
     if (res.roomTypeId !== roomTypeId || !isBlocking(res.status)) continue;
     for (const night of eachNight(res.dateFrom, res.dateTo)) {
+      if (night in out) out[night] += 1;
+    }
+  }
+  for (const block of blocks) {
+    if (block.roomTypeId !== roomTypeId) continue;
+    for (const night of eachNight(block.dateFrom, block.dateTo)) {
       if (night in out) out[night] += 1;
     }
   }

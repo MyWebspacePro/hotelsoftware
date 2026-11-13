@@ -85,7 +85,11 @@ export async function foliosRoutes(app: FastifyInstance): Promise<void> {
     else if (taxRateKey === "MANUAL_FOOD") taxRateKey = rates.food.key;
     else if (taxRateKey === "MANUAL_OTHER") taxRateKey = rates.other.key;
     if (taxRateKey !== "TOURIST_TAX") {
-      taxRate = all.find((r) => r.key === taxRateKey)?.rate ?? 0;
+      const rate = all.find((r) => r.key === taxRateKey);
+      if (!rate) {
+        return reply.code(400).send({ error: `Unbekannter Steuerschlüssel: ${taxRateKey}` });
+      }
+      taxRate = rate.rate;
     }
     const category =
       taxRateKey === "TOURIST_TAX"
@@ -134,7 +138,7 @@ export async function foliosRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         method: z.enum(["CASH", "CARD", "SEPA", "ONLINE", "VOUCHER", "TRANSFER"]),
-        amountCents: z.number().int(),
+        amountCents: z.number().int().min(1),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         reference: z.string().optional(),
         note: z.string().optional(),

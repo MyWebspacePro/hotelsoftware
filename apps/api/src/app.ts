@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { ZodError } from "zod";
+import { env } from "./env.js";
 import { authRoutes } from "./modules/auth.routes.js";
 import { usersRoutes } from "./modules/users.routes.js";
 import { hotelRoutes } from "./modules/hotels.routes.js";
@@ -22,24 +23,39 @@ import { channelsRoutes } from "./modules/channels.routes.js";
 import { publicRoutes } from "./modules/public.routes.js";
 
 export async function buildApp() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: { level: env.LOG_LEVEL },
+    // Hinter Traefik: echte Client-IP für Rate-Limiting/Logs
+    trustProxy: env.TRUST_PROXY,
+    bodyLimit: 1_000_000,
+  });
 
-  await app.register(cors, { origin: true, credentials: true });
+  const origins = env.CORS_ORIGIN.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (origins.length > 0) {
+    await app.register(cors, { origin: origins, credentials: true });
+  }
 
-  app.setErrorHandler((err, _req, reply) => {
+  app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) {
       return reply.code(400).send({
         error: "Validierung fehlgeschlagen",
         details: err.flatten().fieldErrors,
       });
     }
-    if (err instanceof Error) {
-      app.log.error(err);
-      const status = (err as { statusCode?: number }).statusCode ?? 500;
-      return reply.code(status).send({ error: err.message });
+    // Fastify-eigene Validierung (z. B. JSON-Body) hat err.validation
+    const validation = (err as { validation?: unknown }).validation;
+    if (validation) {
+      return reply.code(400).send({ error: "Validierung fehlgeschlagen", details: validation });
     }
-    app.log.error(err);
-    return reply.code(500).send({ error: "Interner Fehler" });
+    const status = (err as { statusCode?: number }).statusCode ?? 500;
+    if (status >= 500) {
+      req.log.error({ err }, "Unerwarteter Fehler");
+      // Keine internen Details an den Client
+      return reply.code(500).send({ error: "Interner Fehler" });
+    }
+    return reply.code(status).send({ error: (err as Error).message });
   });
 
   app.get("/api/health", async () => ({ ok: true, service: "hotelguru-api" }));

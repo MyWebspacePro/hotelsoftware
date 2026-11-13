@@ -177,10 +177,15 @@ export async function registrationsRoutes(app: FastifyInstance): Promise<void> {
         month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
       })
       .parse(req.body);
+    if (body.type === "AT_STATISTIK_MONAT_CSV" && !body.month) {
+      return reply.code(400).send({ error: "month (YYYY-MM) erforderlich" });
+    }
 
     const hotel = await prisma.hotel.findFirstOrThrow({ where: { id: hotelId } });
     const periodFrom = body.type === "AT_STATISTIK_MONAT_CSV" ? `${body.month!}-01` : body.from;
-    const periodTo = body.type === "AT_STATISTIK_MONAT_CSV" ? undefined : body.to;
+    const periodTo =
+      body.type === "AT_STATISTIK_MONAT_CSV" ? monthEndIso(body.month!) : body.to;
+    const periodToExclusive = periodTo ? addDaysIso(periodTo, 1) : undefined;
 
     const records = await prisma.registrationRecord.findMany({
       where: {
@@ -190,11 +195,11 @@ export async function registrationsRoutes(app: FastifyInstance): Promise<void> {
           ? {
               arrival: {
                 gte: new Date(`${periodFrom}T00:00:00.000Z`),
-                lte: new Date(`${body.month!}-31T23:59:59.999Z`),
+                lt: new Date(`${periodToExclusive}T00:00:00.000Z`),
               },
             }
           : periodFrom && periodTo
-            ? { departure: { gte: new Date(`${periodFrom}T00:00:00.000Z`), lte: new Date(`${periodTo}T23:59:59.999Z`) } }
+            ? { departure: { gte: new Date(`${periodFrom}T00:00:00.000Z`), lt: new Date(`${periodToExclusive}T00:00:00.000Z`) } }
             : {}),
       },
       include: { hotel: { select: { name: true } } },
@@ -311,4 +316,10 @@ function monthEndIso(month: string): string {
   const [y, m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0));
   return last.toISOString().slice(0, 10);
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }

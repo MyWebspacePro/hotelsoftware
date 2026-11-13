@@ -41,7 +41,8 @@ const OCC_LABELS: Record<string, { label: string; cls: string }> = {
 const TASK_STATUS_COLORS: Record<string, string> = { OPEN: "#f59e0b", IN_PROGRESS: "#3b82f6", DONE: "#22c55e", SKIPPED: "#94a3b8" };
 
 function todayIsoWeb(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function Housekeeping() {

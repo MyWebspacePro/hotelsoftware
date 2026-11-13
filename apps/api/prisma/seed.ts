@@ -38,6 +38,7 @@ async function main(): Promise<void> {
         country: "AT",
         currency: "EUR",
         language: "de",
+        timezone: "Europe/Vienna",
       },
     });
     console.log(`🏨 Hotel angelegt: ${hotel.name}`);

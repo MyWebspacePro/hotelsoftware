@@ -3,6 +3,12 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import { writeAudit } from "../lib/audit.js";
+import { isValidIsoDate } from "@hg/shared";
+
+const birthDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(isValidIsoDate, "Ungültiges Datum");
 
 const guestSchema = z.object({
   firstName: z.string().min(1),
@@ -14,7 +20,7 @@ const guestSchema = z.object({
   city: z.string().optional(),
   country: z.string().optional(),
   nationality: z.string().optional(),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  birthDate: birthDateSchema.optional().or(z.literal("")),
   idType: z.string().optional(),
   idNumber: z.string().optional(),
   marketingConsent: z.boolean().optional(),

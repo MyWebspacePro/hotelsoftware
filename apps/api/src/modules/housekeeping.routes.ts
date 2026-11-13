@@ -53,7 +53,7 @@ export async function housekeepingRoutes(app: FastifyInstance): Promise<void> {
           number: room.number,
           roomTypeName: room.roomType.name,
           color: room.roomType.color,
-          cleanStatus: status?.cleanStatus ?? "CLEAN",
+          cleanStatus: status?.cleanStatus ?? "DIRTY",
           dnd: status?.dnd ?? false,
           notes: status?.notes ?? null,
           occupancy: departureSet.has(room.id) ? "DEPARTURE" : arrivalSet.has(room.id) ? "ARRIVAL" : stayoverSet.has(room.id) ? "STAYOVER" : "VACANT",
@@ -77,6 +77,8 @@ export async function housekeepingRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(req.body);
     const hotelId = req.user!.hotelId!;
+    const room = await prisma.room.findFirst({ where: { id: roomId, hotelId, deletedAt: null }, select: { id: true } });
+    if (!room) return reply.code(404).send({ error: "Zimmer nicht gefunden" });
     const data = {
       ...(body.cleanStatus ? { cleanStatus: body.cleanStatus } : {}),
       ...(body.dnd !== undefined ? { dnd: body.dnd } : {}),
@@ -132,6 +134,13 @@ export async function housekeepingRoutes(app: FastifyInstance): Promise<void> {
         assigneeId: z.string().optional(),
       })
       .parse(req.body);
+    const hotelId = req.user!.hotelId!;
+    const room = await prisma.room.findFirst({ where: { id: body.roomId, hotelId, deletedAt: null }, select: { id: true } });
+    if (!room) return reply.code(400).send({ error: "Zimmer nicht gefunden" });
+    if (body.assigneeId) {
+      const assignee = await prisma.employee.findFirst({ where: { id: body.assigneeId, hotelId, deletedAt: null }, select: { id: true } });
+      if (!assignee) return reply.code(400).send({ error: "Mitarbeiter nicht gefunden" });
+    }
     const task = await prisma.housekeepingTask.create({
       data: {
         hotelId: req.user!.hotelId!,
@@ -158,6 +167,10 @@ export async function housekeepingRoutes(app: FastifyInstance): Promise<void> {
       .parse(req.body);
     const task = await prisma.housekeepingTask.findFirst({ where: { id, hotelId: req.user!.hotelId!, deletedAt: null } });
     if (!task) return reply.code(404).send({ error: "Task nicht gefunden" });
+    if (body.assigneeId) {
+      const assignee = await prisma.employee.findFirst({ where: { id: body.assigneeId, hotelId: req.user!.hotelId!, deletedAt: null }, select: { id: true } });
+      if (!assignee) return reply.code(400).send({ error: "Mitarbeiter nicht gefunden" });
+    }
     const updated = await prisma.housekeepingTask.update({
       where: { id },
       data: {
@@ -201,9 +214,14 @@ export async function housekeepingRoutes(app: FastifyInstance): Promise<void> {
         priority: z.enum(["LOW", "NORMAL", "HIGH"]).default("NORMAL"),
       })
       .parse(req.body);
+    const hotelId = req.user!.hotelId!;
+    if (body.roomId) {
+      const room = await prisma.room.findFirst({ where: { id: body.roomId, hotelId, deletedAt: null }, select: { id: true } });
+      if (!room) return reply.code(400).send({ error: "Zimmer nicht gefunden" });
+    }
     const ticket = await prisma.maintenanceTicket.create({
       data: {
-        hotelId: req.user!.hotelId!,
+        hotelId,
         roomId: body.roomId,
         area: body.area,
         title: body.title,

@@ -10,17 +10,17 @@ describe("Meldeprofile", () => {
   it("DE: nur ausländische Gäste, 1 Jahr Aufbewahrung", () => {
     const p = REGISTRATION_PROFILES.DE;
     expect(p.foreignOnly).toBe(true);
-    expect(p.retentionDays).toBe(365);
+    expect(p.retentionYears).toBe(1);
     expect(p.requiredFields).toContain("idNumber");
   });
 
   it("AT: alle Gäste (Gästeblatt)", () => {
     expect(REGISTRATION_PROFILES.AT.foreignOnly).toBe(false);
-    expect(REGISTRATION_PROFILES.AT.retentionDays).toBe(730);
+    expect(REGISTRATION_PROFILES.AT.retentionYears).toBe(2);
   });
 
   it("CH: ausländische Gäste, 5 Jahre", () => {
-    expect(REGISTRATION_PROFILES.CH.retentionDays).toBe(1825);
+    expect(REGISTRATION_PROFILES.CH.retentionYears).toBe(5);
   });
 });
 
@@ -47,6 +47,11 @@ describe("missingFields", () => {
     const missing = missingFields({ ...complete, idNumber: null }, REGISTRATION_PROFILES.AT);
     expect(missing).toEqual([]);
   });
+
+  it("leerraum-only zählt als fehlend, null Daten sind robust", () => {
+    expect(missingFields({ ...complete, fullName: "   " }, REGISTRATION_PROFILES.DE)).toContain("Vollständiger Name");
+    expect(missingFields(null, REGISTRATION_PROFILES.DE).length).toBeGreaterThan(0);
+  });
 });
 
 describe("mustBeRegistered", () => {
@@ -62,10 +67,13 @@ describe("mustBeRegistered", () => {
 });
 
 describe("retentionUntil", () => {
-  it("Abreise + Frist (DE: 365 Tage)", () => {
+  it("Abreise + 1 Kalenderjahr (DE)", () => {
     expect(retentionUntil("2026-03-01", REGISTRATION_PROFILES.DE)).toBe("2027-03-01");
   });
-  it("CH: 5 Jahre (1825 Tage, Schaltjahr-Abschlag)", () => {
-    expect(retentionUntil("2026-03-01", REGISTRATION_PROFILES.CH)).toBe("2031-02-28");
+  it("CH: 5 Kalenderjahre (kein Schaltjahr-Abschlag)", () => {
+    expect(retentionUntil("2026-03-01", REGISTRATION_PROFILES.CH)).toBe("2031-03-01");
+  });
+  it("Schalttag + 1 Jahr = 28.02.", () => {
+    expect(retentionUntil("2024-02-29", REGISTRATION_PROFILES.DE)).toBe("2025-02-28");
   });
 });

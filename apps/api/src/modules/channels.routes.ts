@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/auth.js";
 import { writeAudit } from "../lib/audit.js";
+import { assertPublicHttpUrl } from "../lib/net.js";
 import {
   addDays,
   buildIcalCalendar,
@@ -18,6 +20,11 @@ const isoToDate = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const dateToIso = (d: Date) => d.toISOString().slice(0, 10);
 
 const BLOCKING = ["OFFERED", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT"] as const;
+
+/** Kryptografisch sicherer Export-Token (32 Hex-Zeichen). */
+function newExportToken(): string {
+  return randomBytes(16).toString("hex");
+}
 
 const connectionSchema = z.object({
   name: z.string().min(1),
@@ -117,6 +124,19 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     if (body.direction !== "EXPORT" && !body.importUrl) {
       return reply.code(400).send({ error: "Import-Verbindungen brauchen eine iCal-Import-URL" });
     }
+    if (body.importUrl) {
+      try {
+        await assertPublicHttpUrl(body.importUrl);
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : "Ungültige Import-URL" });
+      }
+    }
+    if (body.roomTypeId) {
+      const rt = await prisma.roomType.findFirst({
+        where: { id: body.roomTypeId, hotelId: req.user!.hotelId!, deletedAt: null },
+      });
+      if (!rt) return reply.code(400).send({ error: "Zimmertyp existiert nicht" });
+    }
     const created = await prisma.channelConnection.create({
       data: {
         hotelId: req.user!.hotelId!,
@@ -125,7 +145,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
         direction: body.direction,
         roomTypeId: body.roomTypeId ?? null,
         importUrl: body.importUrl ?? null,
-        exportToken: Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2), // 32 hex
+        exportToken: newExportToken(),
       },
     });
     await writeAudit({
@@ -159,6 +179,19 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     if ((body.direction ?? existing.direction) !== "EXPORT" && (body.importUrl ?? existing.importUrl) == null) {
       return reply.code(400).send({ error: "Import-Verbindungen brauchen eine iCal-Import-URL" });
     }
+    if (body.importUrl) {
+      try {
+        await assertPublicHttpUrl(body.importUrl);
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : "Ungültige Import-URL" });
+      }
+    }
+    if (body.roomTypeId) {
+      const rt = await prisma.roomType.findFirst({
+        where: { id: body.roomTypeId, hotelId: req.user!.hotelId!, deletedAt: null },
+      });
+      if (!rt) return reply.code(400).send({ error: "Zimmertyp existiert nicht" });
+    }
 
     const updated = await prisma.channelConnection.update({
       where: { id: existing.id },
@@ -170,7 +203,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
         ...(body.importUrl !== undefined ? { importUrl: body.importUrl } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
         ...(body.regenerateToken
-          ? { exportToken: Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2) }
+          ? { exportToken: newExportToken() }
           : {}),
       },
     });
@@ -275,9 +308,19 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Feed holen
+    try {
+      await assertPublicHttpUrl(connection.importUrl);
+    } catch (err) {
+      return await finishSync(req.user!.id, req.user!.hotelId!, connection.id, {
+        status: "ERROR",
+        imported: 0, updated: 0, removed: 0, conflicts: 0,
+        message: err instanceof Error ? err.message : "Ungültige Import-URL",
+      });
+    }
+
     let text: string;
     try {
-      const res = await fetch(connection.importUrl, { signal: AbortSignal.timeout(15000) });
+      const res = await fetch(connection.importUrl, { signal: AbortSignal.timeout(15000), redirect: "error" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (err) {
@@ -301,6 +344,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     const existingEvents = await prisma.icalEvent.findMany({ where: { connectionId: connection.id } });
     const byUid = new Map(existingEvents.map((e) => [e.externalUid, e]));
     const seenUids = new Set<string>();
+    const removedUids = new Set<string>();
 
     let imported = 0;
     let updated = 0;
@@ -340,6 +384,18 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
     for (const ev of parsed) {
       seenUids.add(ev.uid);
       const existing = byUid.get(ev.uid);
+
+      // Storniertes Portal-Event: Projektion entfernen, nicht als Buchung anlegen.
+      if (ev.status === "CANCELLED") {
+        if (existing?.bookingId) {
+          removed += await deleteExternalBookingIfClean(existing.bookingId);
+        }
+        await prisma.icalEvent.deleteMany({ where: { connectionId: connection.id, externalUid: ev.uid } });
+        byUid.delete(ev.uid);
+        removedUids.add(ev.uid);
+        removed += 1;
+        continue;
+      }
 
       if (!roomTypeId) {
         // Ohne Zimmertyp: nur listen, nicht kalenderwirksam
@@ -422,8 +478,6 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
         });
         const booking = await prisma.booking.findFirst({ where: { id: bookingId, deletedAt: null } });
         if (booking && reservation) {
-          const ownRoomRow = { roomId: reservation.roomId, roomTypeId, dateFrom: dateToIso(reservation.dateFrom), dateTo: dateToIso(reservation.dateTo), bookingId: null };
-          const othersWithoutOwn = occupied.filter((o) => o !== ownRoomRow && o.roomTypeId === roomTypeId && o.roomId !== reservation.roomId);
           const newRoomId = reservation.roomId ?? findFreeRoom(rooms, roomTypeId, others, ev.dateFrom, ev.dateTo);
           await prisma.reservation.update({
             where: { id: reservation.id },
@@ -520,7 +574,7 @@ export async function channelsRoutes(app: FastifyInstance): Promise<void> {
 
     // Verschollene Feed-Events löschen (+ saubere Projektionen)
     for (const existing of byUid.values()) {
-      if (!seenUids.has(existing.externalUid)) {
+      if (!seenUids.has(existing.externalUid) && !removedUids.has(existing.externalUid)) {
         removed += await deleteExternalBookingIfClean(existing.bookingId);
         await prisma.icalEvent.delete({ where: { id: existing.id } });
         removed += 1;

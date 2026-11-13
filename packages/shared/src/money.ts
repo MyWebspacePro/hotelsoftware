@@ -11,17 +11,30 @@ export function roundHalfUp(value: number, decimals = 2): number {
   // Epsilon gegen Float-Fehler (z. B. 2.675 → 2.67 statt 2.68)
   const scaled = value * factor + (value >= 0 ? 1e-9 : -1e-9);
   const rounded = Math.round(Math.abs(scaled)) * Math.sign(scaled);
-  return rounded / factor;
+  return rounded === 0 ? 0 : rounded / factor;
 }
 
+/** Rundet auf CHF-0,05-Raster; EUR auf 2 Dezimalstellen. */
 export function roundMoney(value: number, currency: Currency): number {
   if (currency === "CHF") {
     // 0.05-Raster
     const cents = Math.round(value * 100 + (value >= 0 ? 1e-9 : -1e-9));
     const snapped = Math.round(Math.abs(cents / 5)) * 5 * Math.sign(cents);
-    return snapped / 100;
+    return snapped === 0 ? 0 : snapped / 100;
   }
   return roundHalfUp(value, 2);
+}
+
+/**
+ * Rundet einen Cent-Betrag währungsabhängig und liefert wieder Cents.
+ * EUR: unverändert (Ganzcent), CHF: auf 5-Cent-Raster.
+ */
+export function roundMoneyCents(cents: number, currency: Currency): number {
+  if (currency === "CHF") {
+    const snapped = Math.round(Math.abs(cents / 5)) * 5 * Math.sign(cents);
+    return snapped === 0 ? 0 : snapped;
+  }
+  return Math.round(cents);
 }
 
 /** Cent-Betrag (CHF: 5-Cent-Raster bereits gerundet). */

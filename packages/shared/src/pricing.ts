@@ -1,4 +1,4 @@
-import { eachNight, overlaps } from "./dates.js";
+import { eachNight, nightsBetween } from "./dates.js";
 
 export interface PriceRuleLike {
   id: string;
@@ -37,15 +37,15 @@ export function priceForStay(
   let stopSellNights = 0;
 
   for (const night of nights) {
-    const covering = rules.filter(
-      (r) => r.dateFrom <= night && night < r.dateTo,
-    );
-    const winner = covering.sort(
-      (a, b) =>
-        // Spezifischer zuerst: kürzere Regel schlägt lange Saison; bei Gleichstand späterer Beginn
-        nightsBetweenIso(a.dateFrom, a.dateTo) - nightsBetweenIso(b.dateFrom, b.dateTo) ||
-        (a.dateFrom < b.dateFrom ? 1 : -1),
-    )[0];
+    const covering = rules
+      .filter((r) => r.dateFrom <= night && night < r.dateTo)
+      .sort((a, b) => {
+        const lenDiff = nightsBetween(b.dateFrom, b.dateTo) - nightsBetween(a.dateFrom, a.dateTo);
+        if (lenDiff !== 0) return lenDiff;
+        if (a.dateFrom === b.dateFrom) return 0;
+        return a.dateFrom < b.dateFrom ? 1 : -1;
+      });
+    const winner = covering[0];
     perNightCents[night] = winner ? winner.priceCents : basePriceCents;
     if (winner) {
       appliedRuleIds[night] = winner.id;
@@ -62,10 +62,6 @@ export function priceForStay(
     minStayRequired,
     stopSellNights,
   };
-}
-
-function nightsBetweenIso(a: string, b: string): number {
-  return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
 }
 
 /** Durchschnittspreis pro Nacht (ADR) in Cents, gerundet. */

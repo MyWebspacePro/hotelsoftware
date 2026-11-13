@@ -23,8 +23,13 @@ export async function getCountryRates(hotelId: string): Promise<{ country: strin
   const config = await prisma.systemConfig.findUnique({ where: { hotelId } });
   const matrix = (config?.config as { taxMatrix?: Record<string, { vatRates: VatRate[] }> })?.taxMatrix ?? {};
   const rates = matrix[hotel.country]?.vatRates ?? [];
-  const pick = (category: string): VatRate =>
-    rates.find((r) => r.category === category) ?? { key: "STD", label: "USt", rate: 0, category: "OTHER" as never };
+  const pick = (category: string): VatRate => {
+    const exact = rates.find((r) => r.category === category);
+    if (exact) return exact;
+    // Fallback: hochwertigster vorhandener Satz statt stiller 0 % (CH ohne OTHER).
+    const fallback = rates.find((r) => r.category === "FOOD") ?? rates[0];
+    return fallback ?? { key: "STD", label: "USt", rate: 0, category: "OTHER" as never };
+  };
   return {
     country: hotel.country,
     currency: hotel.currency,
@@ -79,12 +84,44 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
     },
   });
   const folio = await ensureFolio(hotelId, bookingId);
-  const alreadyPosted = await prisma.folioEntry.count({
-    where: { folioId: folio.id, source: "AUTO_STAY", deletedAt: null },
+
+  // Atomarer "Claim": nur ein Aufrufer darf posten (verhindert Doppel-Logis bei Race).
+  const claimed = await prisma.booking.updateMany({
+    where: { id: bookingId, hotelId, stayPostedAt: null },
+    data: { stayPostedAt: new Date() },
   });
-  if (alreadyPosted > 0) {
+  if (claimed.count === 0) {
     return { folioId: folio.id, posted: false, entryCount: 0, touristTaxCents: 0 };
   }
+
+  try {
+    return await prisma.$transaction(async (tx) => postStayTx(tx, hotelId, folio.id, booking));
+  } catch (err) {
+    // Claim zurücknehmen, damit ein erneuter Check-in möglich bleibt.
+    await prisma.booking.update({ where: { id: bookingId }, data: { stayPostedAt: null } });
+    throw err;
+  }
+}
+
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+async function postStayTx(
+  tx: TxClient,
+  hotelId: string,
+  folioId: string,
+  booking: {
+    reservations: Array<{
+      dateFrom: Date;
+      dateTo: Date;
+      adults: number;
+      children: number;
+      pricePerNightCents: number;
+      ratePlan: { basis: string } | null;
+      room: { number: string } | null;
+      roomType: { name: string };
+    }>;
+  },
+): Promise<PostingResult> {
 
   const { rates } = await getCountryRates(hotelId);
   const hpProfile = await getHpProfile(hotelId);
@@ -101,10 +138,10 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
     for (const night of nights) {
       if (basis === "HP") {
         const split = splitHp(res.pricePerNightCents, hpProfile);
-        await prisma.folioEntry.create({
+        await tx.folioEntry.create({
           data: {
             hotelId,
-            folioId: folio.id,
+            folioId,
             kind: "CHARGE",
             text: `Logis (HP-Anteil) ${night}${roomLabel}`,
             qty: 1,
@@ -118,10 +155,10 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
           },
         });
         if (split.foodCents > 0) {
-          await prisma.folioEntry.create({
+          await tx.folioEntry.create({
             data: {
               hotelId,
-              folioId: folio.id,
+              folioId,
               kind: "CHARGE",
               text: `Halbpension Verpflegungsanteil ${night}${roomLabel}`,
               qty: 1,
@@ -138,10 +175,10 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
         entryCount += split.foodCents > 0 ? 2 : 1;
       } else {
         const text = basis === "UE_F" ? `Logis inkl. Frühstück ${night}${roomLabel}` : `Logis ${night}${roomLabel}`;
-        await prisma.folioEntry.create({
+        await tx.folioEntry.create({
           data: {
             hotelId,
-            folioId: folio.id,
+            folioId,
             kind: "CHARGE",
             text,
             qty: 1,
@@ -165,10 +202,10 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
         ];
         const tax = computeTouristTax(seasons, [night], guests);
         if (tax.totalCents > 0) {
-          await prisma.folioEntry.create({
+          await tx.folioEntry.create({
             data: {
               hotelId,
-              folioId: folio.id,
+              folioId,
               kind: "CHARGE",
               text: `Kurtaxe/Ortstaxe ${night} (${res.adults + res.children} Pers.)`,
               qty: 1,
@@ -189,7 +226,7 @@ export async function postStay(hotelId: string, bookingId: string): Promise<Post
     }
   }
 
-  return { folioId: folio.id, posted: true, entryCount, touristTaxCents };
+  return { folioId, posted: true, entryCount, touristTaxCents };
 }
 
 /**

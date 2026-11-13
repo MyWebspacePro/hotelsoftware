@@ -5,6 +5,14 @@ Grundprinzipien: `hotelId` auf allen Betriebsdaten (Multi-Property-Option) · So
 nie hartkodiert · alle geschäftlichen Berechnungen (Verfügbarkeit, Preise, Splitting, Kurtaxe,
 Rechnungssummen) in `packages/shared` mit Unit-Tests.
 
+## Schema-Abweichungen (implementierter Stand)
+- USt-Sätze liegen als JSON-Matrix in `SystemConfig` (kein eigenes `TaxRate`-Model)
+- `RegistrationProfile` und `HpSplittingProfile` sind Code-Profile/JSON, keine Tabellen
+- `FolioEntryKind` = `CHARGE|CREDIT|DISCOUNT`; `InvoiceStatus` = `ISSUED|PARTIALLY_PAID|PAID|CANCELLED|VOID`
+- `ChannelConnection` nutzt String-Werte (`GENERIC`/`AIRBNB`/`BOOKING`), `IcalBlock` heißt `IcalEvent`
+- `PriceRule` ohne `ratePlanId`/Wochentag/Channel; `TouristTaxConfig` ohne `basis`/`exemptions`/`brackets`
+- `Hotel.timezone` (Geschäftstage) und `Booking.stayPostedAt` (Idempotenz) neu ergänzt
+
 ## Organisation & Auth
 - `User` (email, passwordHash, role: ADMIN|MANAGER|RECEPTION|HOUSEKEEPING|SERVICE, active, hotelId)
 - `Hotel` (name, address, country: DE|AT|CH, currency: EUR|CHF, language, multiProperty settings)

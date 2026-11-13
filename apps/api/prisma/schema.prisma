@@ -39,6 +39,7 @@ model Hotel {
   country      Country       @default(DE)
   currency     Currency      @default(EUR)
   language     String        @default("de")
+  timezone     String        @default("Europe/Vienna")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   deletedAt    DateTime?
@@ -785,6 +786,8 @@ model Booking {
   guest      Guest?        @relation(fields: [guestId], references: [id])
   channelRef String?
   notes      String?
+  /// Idempotenz-Marker für die automatischen Stay-Postings (Check-in).
+  stayPostedAt DateTime?
   reservations Reservation[]
   folios     FolioAccount[]
   invoices   Invoice[]

@@ -14,7 +14,8 @@ iCal-Portalkanäle (Airbnb/Booking.com). Benchmark: Casablanca hotelsoftware, El
 ```bash
 npm install
 docker compose up -d          # PostgreSQL 16 + Mailhog
-npm run db:push               # Prisma-Schema in die DB
+npm run db:push               # Dev: Schema schnell in die DB schreiben
+npm run db:migrate            # Produktion/VPS: Migrationen anwenden (prisma migrate deploy)
 npm run db:seed               # Admin-User + Demohotel „Alpina Montana"
 npm run dev                   # API :3001 + Web :5173
 npm run test                  # Unit-Tests (packages/shared, apps/api)

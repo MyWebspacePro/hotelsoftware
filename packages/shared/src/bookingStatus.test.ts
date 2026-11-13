@@ -29,8 +29,14 @@ describe("Buchungs-Statusmaschine", () => {
     expect(canTransition("CHECKED_IN", "NO_SHOW")).toBe(false);
   });
 
-  it("isOccupied: Anfrage nicht belegt, Check-in belegt", () => {
+  it("allowedTransitions liefert eine Kopie", () => {
+    const t = allowedTransitions("INQUIRY");
+    t.push("CHECKED_OUT");
+    expect(allowedTransitions("INQUIRY")).not.toContain("CHECKED_OUT");
+  });
+
+  it("isOccupied: CONFIRMED + CHECKED_IN belegt, CHECKED_OUT nicht", () => {
     const statuses: BookingStatusValue[] = ["INQUIRY", "OFFERED", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED"];
-    expect(statuses.filter(isOccupied)).toEqual(["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"]);
+    expect(statuses.filter(isOccupied)).toEqual(["CONFIRMED", "CHECKED_IN"]);
   });
 });

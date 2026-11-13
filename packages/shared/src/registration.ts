@@ -1,4 +1,4 @@
-import { addDays } from "./dates.js";
+import { addDays, addYears } from "./dates.js";
 import type { CountryCode } from "./countries.js";
 
 /**
@@ -18,10 +18,15 @@ export interface RegistrationProfile {
   foreignOnly: boolean;
   /** Pflichtfeld-Schlüssel: fullName, birthDate, nationality, idType, idNumber, address. */
   requiredFields: string[];
-  /** Aufbewahrungstage ab Abreise (Lösch-/Anonymisierungsfrist). */
+  /** Aufbewahrungsfrist in Kalenderjahren ab Abreise. */
+  retentionYears: number;
+  /** Abgeleitete Tag-Zahl (nur zur Anzeige; die Frist rechnet in Kalenderjahren). */
   retentionDays: number;
   legalNote: string;
 }
+
+const YEARS_TO_DAYS = (years: number, reference = "2026-03-01"): number =>
+  Math.round((Date.parse(addYears(reference, years)) - Date.parse(reference)) / 86400000);
 
 export const REGISTRATION_PROFILES: Record<CountryCode, RegistrationProfile> = {
   DE: {
@@ -29,7 +34,8 @@ export const REGISTRATION_PROFILES: Record<CountryCode, RegistrationProfile> = {
     label: "Meldeschein (DE, §29/30 BMG)",
     foreignOnly: true,
     requiredFields: ["fullName", "birthDate", "nationality", "idType", "idNumber", "address"],
-    retentionDays: 365,
+    retentionYears: 1,
+    retentionDays: YEARS_TO_DAYS(1),
     legalNote: "§30 Abs. 4 BMG: Meldescheine 1 Jahr aufbewahren, danach binnen 3 Monaten vernichten.",
   },
   AT: {
@@ -37,7 +43,8 @@ export const REGISTRATION_PROFILES: Record<CountryCode, RegistrationProfile> = {
     label: "Gästeblatt (AT, Beherbergungsgesetz)",
     foreignOnly: false,
     requiredFields: ["fullName", "birthDate", "nationality", "address", "idType"],
-    retentionDays: 730,
+    retentionYears: 2,
+    retentionDays: YEARS_TO_DAYS(2),
     legalNote: "Gästeblatt-Pflicht; monatliche Beherbergungsstatistik an Statistik Austria (BStatG 2021).",
   },
   CH: {
@@ -45,7 +52,8 @@ export const REGISTRATION_PROFILES: Record<CountryCode, RegistrationProfile> = {
     label: "Gästekontrolle (CH, AIG/VZAE)",
     foreignOnly: true,
     requiredFields: ["fullName", "birthDate", "nationality", "idType", "idNumber"],
-    retentionDays: 1825,
+    retentionYears: 5,
+    retentionDays: YEARS_TO_DAYS(5),
     legalNote: "Meldepflicht ausländische Gäste (AIG); Meldescheine mind. 5 Jahre aufbewahren.",
   },
 };
@@ -69,18 +77,21 @@ export interface RegistrationDataLike {
 }
 
 /** Fehlende Pflichtfelder laut Profil (deutsche Labels). */
-export function missingFields(data: RegistrationDataLike, profile: RegistrationProfile): string[] {
+export function missingFields(data: RegistrationDataLike | null | undefined, profile: RegistrationProfile): string[] {
+  const source = (data ?? {}) as unknown as Record<string, unknown>;
   const missing: string[] = [];
   for (const field of profile.requiredFields) {
-    const value = (data as unknown as Record<string, string | null>)[field];
-    if (!value || value.trim() === "") missing.push(FIELD_LABELS[field] ?? field);
+    const value = source[field];
+    const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
+    if (!text) missing.push(FIELD_LABELS[field] ?? field);
   }
   return missing;
 }
 
-/** Löschfrist: Abreise + retentionDays (ISO). */
+/** Löschfrist: Abreise + retentionYears (Kalenderjahre, ISO). */
 export function retentionUntil(departureIso: string, profile: RegistrationProfile): string {
-  return addDays(departureIso, profile.retentionDays);
+  if (!profile.retentionYears) return addDays(departureIso, profile.retentionDays);
+  return addYears(departureIso, profile.retentionYears);
 }
 
 /** Muss dieser Gast gemeldet werden? (foreignOnly-Profile: nur Nicht-Inländer) */

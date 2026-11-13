@@ -6,6 +6,14 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, "JWT_SECRET zu kurz"),
   JWT_REFRESH_SECRET: z.string().min(16, "JWT_REFRESH_SECRET zu kurz"),
   NODE_ENV: z.string().default("development"),
+  LOG_LEVEL: z.string().default("info"),
+  /** Kommagetrennte erlaubte CORS-Origins; leer = kein CORS (Same-Origin via nginx). */
+  CORS_ORIGIN: z.string().default(""),
+  /** Hinter Reverse-Proxy (Traefik): req.ip aus X-Forwarded-For */
+  TRUST_PROXY: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true" || v === "1"),
 });
 
 const parsed = envSchema.safeParse(process.env);

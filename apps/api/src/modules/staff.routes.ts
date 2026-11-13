@@ -103,9 +103,18 @@ export async function staffRoutes(app: FastifyInstance): Promise<void> {
         note: z.string().optional(),
       })
       .parse(req.body);
+    const hotelId = req.user!.hotelId!;
+    if (body.employeeIds.length) {
+      const found = await prisma.employee.count({
+        where: { id: { in: body.employeeIds }, hotelId, deletedAt: null },
+      });
+      if (found !== body.employeeIds.length) {
+        return reply.code(400).send({ error: "Mitarbeiter gehören nicht zum Hotel" });
+      }
+    }
     const shift = await prisma.shift.create({
       data: {
-        hotelId: req.user!.hotelId!,
+        hotelId,
         date: isoToDate(body.date),
         department: body.department,
         fromTime: body.fromTime,
@@ -141,6 +150,12 @@ export async function staffRoutes(app: FastifyInstance): Promise<void> {
         },
       });
       if (body.employeeIds) {
+        const found = await prisma.employee.count({
+          where: { id: { in: body.employeeIds }, hotelId: req.user!.hotelId!, deletedAt: null },
+        });
+        if (found !== body.employeeIds.length) {
+          return reply.code(400).send({ error: "Mitarbeiter gehören nicht zum Hotel" });
+        }
         await tx.shiftAssignment.deleteMany({ where: { shiftId: id } });
         await tx.shiftAssignment.createMany({ data: body.employeeIds.map((employeeId) => ({ shiftId: id, employeeId })) });
       }
@@ -229,6 +244,11 @@ export async function staffRoutes(app: FastifyInstance): Promise<void> {
     if (body.dateFrom > body.dateTo) {
       return reply.code(400).send({ error: "Ende muss nach Beginn liegen" });
     }
+    const employee = await prisma.employee.findFirst({
+      where: { id: body.employeeId, hotelId: req.user!.hotelId!, deletedAt: null },
+      select: { id: true },
+    });
+    if (!employee) return reply.code(400).send({ error: "Mitarbeiter nicht gefunden" });
     const request = await prisma.vacationRequest.create({
       data: {
         hotelId: req.user!.hotelId!,
